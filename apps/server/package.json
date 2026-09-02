@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "db:push": "drizzle-kit push",
-    "ingest:transcripts": "tsx src/ingest/transcripts.ts"
+    "ingest:transcripts": "tsx src/ingest/transcripts.ts",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
