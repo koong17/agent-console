@@ -5,5 +5,8 @@
   "scripts": {
     "dev:server": "pnpm --filter server dev",
     "dev:web": "pnpm --filter web dev"
+  },
+  "engines": {
+    "node": ">=26"
   }
 }
