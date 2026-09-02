@@ -48,7 +48,9 @@ export const sessions = pgTable('sessions', {
 export const turns = pgTable(
   'turns',
   {
-    // transcript 줄의 uuid. 같은 줄을 두 번 넣으면 여기서 막힌다.
+    // API 응답의 message.id ("msg_..."). transcript는 응답 하나를 콘텐츠 블록마다
+    // 한 줄씩 쪼개 저장하고(텍스트 줄, 도구 호출 줄...) 각 줄이 같은 usage를 반복한다.
+    // 줄 uuid를 키로 쓰면 토큰이 두세 배로 잡힌다. message.id가 "응답 하나"의 단위다.
     id: text('id').primaryKey(),
     sessionId: text('session_id')
       .notNull()
