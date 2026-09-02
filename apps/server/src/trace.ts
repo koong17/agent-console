@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
-// One row per finished HTTP request. This is the self-observation unit:
-// everything the dashboard will ever chart hangs off this shape.
+// 완료된 HTTP 요청 하나당 한 줄. 자기 관찰의 최소 단위이며
+// 대시보드가 그릴 모든 차트는 이 형태에서 파생된다.
 export type Trace = {
   id: string
   method: string
@@ -11,9 +11,8 @@ export type Trace = {
   startedAt: string
 }
 
-// In-memory ring buffer, newest first, capped so a long-running dev server
-// cannot grow without bound. Milestone 2 replaces this with Postgres —
-// the plugin's surface (record/list) is the part that survives that swap.
+// 메모리 링 버퍼, 최신순. 오래 켜둔 dev 서버가 무한히 커지지 않도록 상한을 둔다.
+// milestone 2에서 Postgres로 교체 예정 — 그때 살아남는 건 플러그인의 표면(기록/조회)이다.
 const MAX_TRACES = 1000
 const traces: Trace[] = []
 
@@ -22,17 +21,16 @@ export function listTraces(limit = 100): Trace[] {
 }
 
 export function tracePlugin(app: FastifyInstance) {
-  // Fastify has no Express-style middleware chain; it exposes named
-  // lifecycle hooks instead. We stamp the clock at onRequest (earliest
-  // point) and compute duration at onResponse (after the reply is sent,
-  // so measuring adds no latency to the response itself).
+  // Fastify에는 Express식 미들웨어 체인이 없고 이름 붙은 라이프사이클 훅이 있다.
+  // onRequest(가장 이른 지점)에서 시각을 찍고, onResponse(응답 전송 후)에서
+  // 소요 시간을 계산한다. 응답 뒤에 측정하므로 측정 자체가 응답 지연을 만들지 않는다.
   app.addHook('onRequest', async (req) => {
     req.startTime = process.hrtime.bigint()
   })
 
   app.addHook('onResponse', async (req, reply) => {
-    // The trace list endpoint itself is excluded: otherwise polling the
-    // dashboard would flood the very data it displays.
+    // 트레이스 목록 엔드포인트 자신은 제외한다. 안 그러면 대시보드 폴링이
+    // 자기가 보여주는 데이터를 스스로 채워버린다.
     if (req.routeOptions.url === '/traces') return
 
     const durationNs = process.hrtime.bigint() - req.startTime

@@ -13,5 +13,6 @@ Before any implementation or design work, read the project brain doc — it owns
 - **Grill checks at milestones.** Pose scenario questions to verify the mechanism landed ("two concurrent requests hit this endpoint — what happens?"). Leave open questions in the session, not buried in code comments.
 - **Discipline deferral.** No auth, deploy pipeline, or migration ceremony until a second user exists. Local Postgres/SQLite, hardcoded token, tunnel.
 - **Learning stack is deliberate.** Fastify + Drizzle keep mechanisms visible; do not introduce NestJS-style wrappers or extra abstraction layers. The NestJS port is a recorded exit strategy, not a refactor target.
+- **Korean everywhere.** This is Suah's learning repo: code comments, in-repo docs (README, design notes), commit messages, and in-session mechanism explanations are all Korean. Commit type keywords (`feat`, `fix`, `refactor`) and identifiers stay English. The brain doc in `suah-brain` stays English (that repo's own rule).
 - Commit rule: this repo follows the global rule — never commit without Suah's explicit approval.
 - After a session that changes plan, status, or decisions, update the brain doc's Status section (that repo auto-commits).

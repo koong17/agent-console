@@ -5,8 +5,8 @@ const app = Fastify({ logger: true })
 
 tracePlugin(app)
 
-// A couple of routes to observe. /slow exists so the first chart has
-// something interesting to show: a visible latency outlier.
+// 관찰 대상 라우트 몇 개. /slow는 첫 차트에 볼 만한 게 있도록,
+// 눈에 띄는 지연 이상치를 하나 만들어 두는 용도다.
 app.get('/health', async () => ({ ok: true }))
 
 app.get('/slow', async () => {
