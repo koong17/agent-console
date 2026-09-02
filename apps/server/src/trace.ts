@@ -1,23 +1,12 @@
 import type { FastifyInstance } from 'fastify'
+import { desc } from 'drizzle-orm'
+import { db } from './db/index.js'
+import { traces, type Trace } from './db/schema.js'
 
-// 완료된 HTTP 요청 하나당 한 줄. 자기 관찰의 최소 단위이며
-// 대시보드가 그릴 모든 차트는 이 형태에서 파생된다.
-export type Trace = {
-  id: string
-  method: string
-  url: string
-  statusCode: number
-  durationMs: number
-  startedAt: string
-}
+export type { Trace }
 
-// 메모리 링 버퍼, 최신순. 오래 켜둔 dev 서버가 무한히 커지지 않도록 상한을 둔다.
-// milestone 2에서 Postgres로 교체 예정 — 그때 살아남는 건 플러그인의 표면(기록/조회)이다.
-const MAX_TRACES = 1000
-const traces: Trace[] = []
-
-export function listTraces(limit = 100): Trace[] {
-  return traces.slice(0, limit)
+export async function listTraces(limit = 100): Promise<Trace[]> {
+  return db.select().from(traces).orderBy(desc(traces.id)).limit(limit)
 }
 
 export function tracePlugin(app: FastifyInstance) {
@@ -26,6 +15,7 @@ export function tracePlugin(app: FastifyInstance) {
   // 소요 시간을 계산한다. 응답 뒤에 측정하므로 측정 자체가 응답 지연을 만들지 않는다.
   app.addHook('onRequest', async (req) => {
     req.startTime = process.hrtime.bigint()
+    req.startedAt = new Date()
   })
 
   app.addHook('onResponse', async (req, reply) => {
@@ -34,20 +24,23 @@ export function tracePlugin(app: FastifyInstance) {
     if (req.routeOptions.url === '/traces') return
 
     const durationNs = process.hrtime.bigint() - req.startTime
-    traces.unshift({
-      id: req.id,
+
+    // 응답은 이미 나갔으므로 여기서 던진 에러는 클라이언트에 닿지 않는다.
+    // Fastify가 로그만 남기고 삼킨다. DB가 죽어 있으면 트레이스만 조용히 유실된다.
+    await db.insert(traces).values({
+      requestId: req.id,
       method: req.method,
       url: req.url,
       statusCode: reply.statusCode,
       durationMs: Number(durationNs / 1_000_000n),
-      startedAt: new Date().toISOString(),
+      startedAt: req.startedAt,
     })
-    if (traces.length > MAX_TRACES) traces.pop()
   })
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
     startTime: bigint
+    startedAt: Date
   }
 }

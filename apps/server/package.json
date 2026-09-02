@@ -3,14 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "fastify": "^5.2.0"
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.2.0",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "@types/node": "^22.10.0"
+    "typescript": "^5.7.0"
   }
 }

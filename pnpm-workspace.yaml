@@ -2,5 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 
-onlyBuiltDependencies:
-  - esbuild
+# pnpm 11은 postinstall 스크립트를 기본 차단한다. esbuild(tsx, drizzle-kit이 사용)만 허용.
+# 예전 키 onlyBuiltDependencies는 pnpm 11에서 무시되고 allowBuilds로 바뀌었다.
+allowBuilds:
+  esbuild: true

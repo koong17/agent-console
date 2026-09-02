@@ -1,8 +1,10 @@
 import { AutoRefresh } from './auto-refresh'
 
-// 서버 쪽 Trace 타입과 같은 형태. packages/contract가 생기면 그쪽 생성물로 대체한다.
+// 서버 쪽 Trace 타입의 JSON 직렬화 형태. Date는 전송 중 문자열이 된다.
+// packages/contract가 생기면 그쪽 생성물로 대체한다.
 type Trace = {
-  id: string
+  id: number
+  requestId: string
   method: string
   url: string
   statusCode: number
