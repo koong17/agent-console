@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { count, countDistinct, desc, eq, max, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
-import { sessions, turns, skillInvocations, modelPrices } from './db/schema.js'
+import { sessions, turns, skillInvocations, modelPrices, gateEvents } from './db/schema.js'
 import { totalCostUsd } from './cost.js'
 
 // 대시보드 첫 화면용 집계 두 개. 두 쿼리 모두 GROUP BY 하나짜리 단순 집계다.
@@ -85,6 +85,42 @@ export function usageRoutes(app: FastifyInstance) {
       outputTokens: Number(r.output_tokens),
       costUsd: Number(r.cost_usd),
     }))
+  })
+
+  // 게이트 준수. 게이트가 안내를 넣은(nudged) 뒤 같은 세션에서 1시간 안에 suah-judge가
+  // 호출됐으면 준수로 본다. 상관 서브쿼리(EXISTS)로 이벤트마다 확인한다.
+  // 이벤트 수가 적어(하루 수 건) 지금은 이 방식이 가장 읽기 쉽다.
+  app.get('/usage/gates', async () => {
+    const complied = sql<boolean>`exists (
+      select 1 from ${skillInvocations} si
+      where si.session_id = ${gateEvents.sessionId}
+        and si.skill = 'suah-judge'
+        and si.ts between ${gateEvents.ts} and ${gateEvents.ts} + interval '1 hour'
+    )`
+
+    const events = await db
+      .select({
+        id: gateEvents.id,
+        sessionId: gateEvents.sessionId,
+        repo: gateEvents.repo,
+        ts: gateEvents.ts,
+        triggerSkill: gateEvents.triggerSkill,
+        outcome: gateEvents.outcome,
+        complied,
+      })
+      .from(gateEvents)
+      .orderBy(desc(gateEvents.ts))
+      .limit(100)
+
+    const nudged = events.filter((e) => e.outcome === 'nudged')
+    const compliedCount = nudged.filter((e) => e.complied).length
+    return {
+      nudged: nudged.length,
+      complied: compliedCount,
+      // 분모 0이면 null. 0%로 보이면 "전부 어겼다"로 읽힌다.
+      rate: nudged.length ? compliedCount / nudged.length : null,
+      events,
+    }
   })
 
   // 스킬별 호출 수와 마지막 사용 시각.

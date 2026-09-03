@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { ingestTranscripts, type IngestSummary } from './transcripts.js'
+import { ingestAll, type IngestSummary } from './index.js'
 
 // ingestion을 서버 프로세스 안에서 주기적으로 돈다.
 //
@@ -28,7 +28,7 @@ export function ingestScheduler(app: FastifyInstance) {
     }
     state = { status: 'running', startedAt: new Date().toISOString() }
     try {
-      const summary = await ingestTranscripts()
+      const summary = await ingestAll()
       state = { status: 'done', finishedAt: new Date().toISOString(), summary }
       app.log.info({ trigger, ...summary }, 'ingest done')
     } catch (err) {

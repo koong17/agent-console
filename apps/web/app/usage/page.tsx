@@ -20,16 +20,30 @@ type SkillUsage = {
   lastUsedAt: string
 }
 
+type GateEvent = {
+  id: number
+  sessionId: string
+  repo: string | null
+  ts: string
+  triggerSkill: string
+  outcome: 'nudged' | 'throttled'
+  complied: boolean
+}
+
+type GateUsage = { nudged: number; complied: number; rate: number | null; events: GateEvent[] }
+
 export default async function UsagePage() {
   // 두 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
   let repos: RepoUsage[]
   let skills: SkillUsage[]
   let daily: DailyUsage[]
+  let gates: GateUsage
   try {
-    ;[repos, skills, daily] = await Promise.all([
+    ;[repos, skills, daily, gates] = await Promise.all([
       fetchJson<RepoUsage[]>('/usage/repos'),
       fetchJson<SkillUsage[]>('/usage/skills'),
       fetchJson<DailyUsage[]>('/usage/daily?days=30'),
+      fetchJson<GateUsage>('/usage/gates'),
     ])
   } catch (err) {
     return (
@@ -48,7 +62,7 @@ export default async function UsagePage() {
         <Nav />
         <h1>usage</h1>
         <p className="state">
-          아직 데이터가 없어요. 서버 폴더에서 <code>pnpm ingest:transcripts</code> 를 실행하세요.
+          아직 데이터가 없어요. 서버 폴더에서 <code>pnpm ingest</code> 를 실행하세요.
         </p>
       </main>
     )
@@ -110,6 +124,49 @@ export default async function UsagePage() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section>
+        <h2>gate</h2>
+        {gates.nudged === 0 ? (
+          <p className="state">아직 게이트가 울린 기록이 없어요. 판단 스킬(code-review, feature-plan…)을 부르면 쌓여요.</p>
+        ) : (
+          <>
+            <p className="summary">
+              suah-judge 게이트 준수{' '}
+              <strong>{gates.rate === null ? '-' : `${Math.round(gates.rate * 100)}%`}</strong> · 안내{' '}
+              <strong>{gates.nudged}</strong>회 중 <strong>{gates.complied}</strong>회 1시간 안에 suah-judge 호출
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>time</th>
+                    <th>repo</th>
+                    <th>trigger</th>
+                    <th>outcome</th>
+                    <th>complied</th>
+                    <th>session</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gates.events.map((e) => (
+                    <tr key={e.id} className={e.outcome === 'nudged' && !e.complied ? 'is-error' : undefined}>
+                      <td className="mono">{e.ts.slice(0, 16).replace('T', ' ')}</td>
+                      <td>{e.repo ?? '-'}</td>
+                      <td>{e.triggerSkill}</td>
+                      <td>{e.outcome}</td>
+                      <td>{e.outcome === 'nudged' ? (e.complied ? 'yes' : 'no') : '-'}</td>
+                      <td className="mono">
+                        <Link href={`/sessions/${e.sessionId}`}>{e.sessionId.slice(0, 8)}</Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </section>
 
       <section>

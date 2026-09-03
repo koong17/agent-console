@@ -1,7 +1,7 @@
 // Claude Code transcript(~/.claude/projects/<cwd-slug>/<session>.jsonl)를 읽어
 // sessions / turns / skill_invocations에 넣는다.
 //
-// 진입점은 둘이다. CLI(pnpm ingest:transcripts, cli.ts)와 서버 안 스케줄러(scheduler.ts).
+// 진입점은 둘이다. CLI(pnpm ingest, cli.ts)와 서버 안 스케줄러(scheduler.ts).
 // 여러 번 돌려도 안전하다. 키가 원본 ID라 이미 있는 행은 DB가 거절하고,
 // 우리는 그 거절을 에러가 아니라 "건너뜀"으로 처리한다(onConflictDoNothing).
 
@@ -164,10 +164,9 @@ async function ingestFile(path: string) {
   })
 }
 
-export type IngestSummary = { files: number; turns: number; skills: number; durationMs: number }
+export type TranscriptSummary = { files: number; turns: number; skills: number }
 
-export async function ingestTranscripts(): Promise<IngestSummary> {
-  const started = Date.now()
+export async function ingestTranscripts(): Promise<TranscriptSummary> {
   const total = { files: 0, turns: 0, skills: 0 }
 
   for await (const path of glob(join(PROJECTS_DIR, '*', '*.jsonl'))) {
@@ -177,5 +176,5 @@ export async function ingestTranscripts(): Promise<IngestSummary> {
     total.skills += r.skills
   }
 
-  return { ...total, durationMs: Date.now() - started }
+  return total
 }
