@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
 import { fetchJson } from '../server'
+import { fmtUsd } from '../format'
 
 type RepoUsage = {
   repo: string
@@ -8,6 +9,7 @@ type RepoUsage = {
   turns: number
   inputTokens: number
   outputTokens: number
+  costUsd: number | null
   lastSeenAt: string | null
 }
 
@@ -57,7 +59,7 @@ export default async function UsagePage() {
       <Nav />
       <h1>usage</h1>
 
-      <h2>레포별</h2>
+      <h2>레포별 <small>(cost = API 환산 비용)</small></h2>
       <table cellPadding={6} style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ textAlign: 'left', borderBottom: '1px solid #999' }}>
@@ -66,6 +68,7 @@ export default async function UsagePage() {
             <th style={{ textAlign: 'right' }}>turns</th>
             <th style={{ textAlign: 'right' }}>input tokens</th>
             <th style={{ textAlign: 'right' }}>output tokens</th>
+            <th style={{ textAlign: 'right' }}>cost</th>
             <th>last seen</th>
           </tr>
         </thead>
@@ -79,6 +82,7 @@ export default async function UsagePage() {
               <td style={{ textAlign: 'right' }}>{fmt.format(r.turns)}</td>
               <td style={{ textAlign: 'right' }}>{fmt.format(r.inputTokens)}</td>
               <td style={{ textAlign: 'right' }}>{fmt.format(r.outputTokens)}</td>
+              <td style={{ textAlign: 'right' }}>{fmtUsd(r.costUsd)}</td>
               <td>{day(r.lastSeenAt)}</td>
             </tr>
           ))}

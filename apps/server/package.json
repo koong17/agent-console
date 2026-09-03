@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "db:push": "drizzle-kit push",
     "ingest:transcripts": "tsx src/ingest/cli.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

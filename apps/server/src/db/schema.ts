@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, serial, text, integer, numeric, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core'
 
 // ---------------------------------------------------------------------------
 // 자기 관찰: 이 서버가 받은 HTTP 요청
@@ -107,3 +107,21 @@ export type Session = typeof sessions.$inferSelect
 export type Turn = typeof turns.$inferSelect
 export type SkillInvocation = typeof skillInvocations.$inferSelect
 export type GateEvent = typeof gateEvents.$inferSelect
+
+// ---------------------------------------------------------------------------
+// 모델 단가 (USD / 100만 토큰). 출처: platform.claude.com/docs/en/about-claude/pricing
+// 코드가 아니라 표에 두는 이유: 비용을 SQL에서 SUM(토큰 × 단가) 한 줄로 내기 위해서다.
+// 단가가 바뀌면 행을 UPDATE 한다. 초기값은 pnpm db:seed 로 넣는다.
+// ---------------------------------------------------------------------------
+export const modelPrices = pgTable('model_prices', {
+  model: text('model').primaryKey(),
+  inputUsd: numeric('input_usd', { precision: 8, scale: 4 }).notNull(),
+  cacheWrite5mUsd: numeric('cache_write_5m_usd', { precision: 8, scale: 4 }).notNull(),
+  cacheWrite1hUsd: numeric('cache_write_1h_usd', { precision: 8, scale: 4 }).notNull(),
+  cacheReadUsd: numeric('cache_read_usd', { precision: 8, scale: 4 }).notNull(),
+  outputUsd: numeric('output_usd', { precision: 8, scale: 4 }).notNull(),
+  // 확인한 날. 단가 표가 오래됐는지 화면에서 판단하는 근거.
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull(),
+})
+
+export type ModelPrice = typeof modelPrices.$inferSelect

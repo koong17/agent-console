@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
 import { count, countDistinct, desc, eq, max, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
-import { sessions, turns, skillInvocations } from './db/schema.js'
+import { sessions, turns, skillInvocations, modelPrices } from './db/schema.js'
+import { totalCostUsd } from './cost.js'
 
 // 대시보드 첫 화면용 집계 두 개. 두 쿼리 모두 GROUP BY 하나짜리 단순 집계다.
 // 행 수(turns 1만)에서는 인덱스 없이도 빠르다. 느려지기 시작하면 /traces에 먼저 보인다.
@@ -17,10 +18,13 @@ export function usageRoutes(app: FastifyInstance) {
         // sum()은 numeric이라 문자열로 온다. 정수 범위 안이므로 bigint로 캐스팅해 숫자로 받는다.
         inputTokens: sql<number>`coalesce(sum(${turns.inputTokens} + ${turns.cacheReadTokens} + ${turns.cacheCreationTokens}), 0)::bigint`.mapWith(Number),
         outputTokens: sql<number>`coalesce(sum(${turns.outputTokens}), 0)::bigint`.mapWith(Number),
+        // 단가표가 DB에 있어서 레포별 비용도 같은 SUM으로 끝난다.
+        costUsd: totalCostUsd,
         lastSeenAt: max(sessions.lastSeenAt),
       })
       .from(sessions)
       .leftJoin(turns, eq(turns.sessionId, sessions.id))
+      .leftJoin(modelPrices, eq(modelPrices.model, turns.model))
       .groupBy(sessions.repo)
       .orderBy(desc(count(turns.id)))
   })
