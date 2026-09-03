@@ -1,11 +1,13 @@
 import Fastify from 'fastify'
 import { tracePlugin, listTraces } from './trace.js'
 import { usageRoutes } from './usage.js'
+import { ingestScheduler } from './ingest/scheduler.js'
 
 const app = Fastify({ logger: true })
 
 tracePlugin(app)
 usageRoutes(app)
+ingestScheduler(app)
 
 // 관찰 대상 라우트 몇 개. /slow는 첫 차트에 볼 만한 게 있도록,
 // 눈에 띄는 지연 이상치를 하나 만들어 두는 용도다.
