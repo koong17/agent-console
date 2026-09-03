@@ -15,6 +15,7 @@ Before any implementation or design work, read the project brain doc — it owns
 - **Learning stack is deliberate.** Fastify + Drizzle keep mechanisms visible; do not introduce NestJS-style wrappers or extra abstraction layers. The NestJS port is a recorded exit strategy, not a refactor target.
 - **Plain language.** Suah is learning backend here; assume no prior knowledge of a mechanism. One concept per paragraph, plain words before any term, define each new term inline, show what she would observe before explaining why. Terse register hurts here; clarity beats brevity.
 - **Latest versions.** Pick the newest stable release of every library when adding or bumping (check `npm view <pkg> version`). `@types/node` tracks the Node major in `.nvmrc`.
+- **Design rules live in `apps/web/DESIGN.md`.** Read it before touching any web UI. Tokens and classes come from `apps/web/app/globals.css`; no hex or ad-hoc styling in components.
 - **Korean everywhere.** This is Suah's learning repo: code comments, in-repo docs (README, design notes), commit messages, and in-session mechanism explanations are all Korean. Commit type keywords (`feat`, `fix`, `refactor`) and identifiers stay English. The brain doc in `suah-brain` stays English (that repo's own rule).
 - Commit rule: this repo follows the global rule — never commit without Suah's explicit approval.
 - After a session that changes plan, status, or decisions, update the brain doc's Status section (that repo auto-commits).
