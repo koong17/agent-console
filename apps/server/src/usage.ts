@@ -29,6 +29,64 @@ export function usageRoutes(app: FastifyInstance) {
       .orderBy(desc(count(turns.id)))
   })
 
+  // 일별 추세. 최근 N일, 사용 없는 날도 0으로 채워서 돌려준다.
+  //
+  // 두 가지가 이 쿼리의 핵심이다.
+  // 1) 날짜 경계는 한국 시간이다. turns.ts는 UTC라서 그대로 date로 자르면 밤 9시 이후
+  //    사용이 다음 날로 넘어간다. AT TIME ZONE 'Asia/Seoul'로 먼저 바꾼 뒤 자른다.
+  // 2) generate_series가 날짜 목록을 만들고 거기에 집계를 LEFT JOIN 한다. GROUP BY만
+  //    쓰면 사용 없는 날이 행 자체가 없어서 차트에 구멍이 생긴다.
+  app.get('/usage/daily', async (req) => {
+    const { days: raw } = req.query as { days?: string }
+    const days = Math.min(Math.max(Number(raw) || 30, 1), 365)
+
+    const rows = await db.execute<{
+      day: string
+      sessions: number
+      turns: number
+      output_tokens: number
+      cost_usd: number | null
+    }>(sql`
+      with days as (
+        select generate_series(
+          (now() at time zone 'Asia/Seoul')::date - ${days - 1}::int,
+          (now() at time zone 'Asia/Seoul')::date,
+          interval '1 day'
+        )::date as day
+      ),
+      per_day as (
+        select
+          (${turns.ts} at time zone 'Asia/Seoul')::date as day,
+          count(distinct ${turns.sessionId})::int as sessions,
+          count(*)::int as turns,
+          coalesce(sum(${turns.outputTokens}), 0)::bigint as output_tokens,
+          ${totalCostUsd} as cost_usd
+        from ${turns}
+        left join ${modelPrices} on ${modelPrices.model} = ${turns.model}
+        where (${turns.ts} at time zone 'Asia/Seoul')::date >= (now() at time zone 'Asia/Seoul')::date - ${days - 1}::int
+        group by 1
+      )
+      select
+        to_char(days.day, 'YYYY-MM-DD') as day,
+        coalesce(per_day.sessions, 0) as sessions,
+        coalesce(per_day.turns, 0) as turns,
+        coalesce(per_day.output_tokens, 0) as output_tokens,
+        coalesce(per_day.cost_usd, 0) as cost_usd
+      from days
+      left join per_day on per_day.day = days.day
+      order by days.day
+    `)
+
+    // db.execute는 드라이버가 준 그대로 돌려준다. bigint/numeric은 문자열이라 여기서 숫자로 바꾼다.
+    return rows.rows.map((r) => ({
+      day: r.day,
+      sessions: Number(r.sessions),
+      turns: Number(r.turns),
+      outputTokens: Number(r.output_tokens),
+      costUsd: Number(r.cost_usd),
+    }))
+  })
+
   // 스킬별 호출 수와 마지막 사용 시각.
   app.get('/usage/skills', async () => {
     return db

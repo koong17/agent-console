@@ -217,3 +217,54 @@ tr.is-error td {
   line-height: 16px;
   white-space: pre-wrap;
 }
+
+/* 막대 차트 (일별 추세). 규칙은 DESIGN.md 4절 끝. */
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 120px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--hairline);
+  position: relative;
+}
+.chart-col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  position: relative;
+}
+.chart-col .bar {
+  width: 100%;
+  min-height: 1px;
+  background: var(--link);
+}
+.chart-col.is-zero .bar {
+  background: var(--hairline);
+}
+.chart-col:hover .bar {
+  background: var(--link-deep);
+}
+.chart-label {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  color: var(--mute);
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.chart-max {
+  position: absolute;
+  top: 0;
+  right: 0;
+  color: var(--mute);
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 16px;
+}

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Nav } from '../nav'
 import { fetchJson } from '../server'
 import { fmtDay, fmtNum, fmtUsd } from '../format'
+import { DailyChart, type DailyUsage } from './daily-chart'
 
 type RepoUsage = {
   repo: string
@@ -23,10 +24,12 @@ export default async function UsagePage() {
   // 두 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
   let repos: RepoUsage[]
   let skills: SkillUsage[]
+  let daily: DailyUsage[]
   try {
-    ;[repos, skills] = await Promise.all([
+    ;[repos, skills, daily] = await Promise.all([
       fetchJson<RepoUsage[]>('/usage/repos'),
       fetchJson<SkillUsage[]>('/usage/skills'),
+      fetchJson<DailyUsage[]>('/usage/daily?days=30'),
     ])
   } catch (err) {
     return (
@@ -55,6 +58,8 @@ export default async function UsagePage() {
     (acc, r) => (acc === null || r.costUsd === null ? null : acc + r.costUsd),
     0,
   )
+  const last7 = daily.slice(-7).reduce((a, d) => a + d.costUsd, 0)
+  const prev7 = daily.slice(-14, -7).reduce((a, d) => a + d.costUsd, 0)
 
   return (
     <main>
@@ -64,6 +69,14 @@ export default async function UsagePage() {
         레포 <strong>{repos.length}</strong>개 · 스킬 <strong>{skills.length}</strong>개 · API 환산 비용 합계{' '}
         <strong>{fmtUsd(totalCost)}</strong>
       </p>
+
+      <section>
+        <h2>daily · 30d</h2>
+        <p className="summary">
+          최근 7일 <strong>{fmtUsd(last7)}</strong> · 그 전 7일 <strong>{fmtUsd(prev7)}</strong>
+        </p>
+        <DailyChart days={daily} />
+      </section>
 
       <section>
         <h2>repos</h2>
