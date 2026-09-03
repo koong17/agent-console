@@ -5,6 +5,7 @@ export function Nav() {
     <nav style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
       <Link href="/">traces</Link>
       <Link href="/usage">usage</Link>
+      <Link href="/sessions">sessions</Link>
     </nav>
   )
 }

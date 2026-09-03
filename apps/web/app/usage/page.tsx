@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Nav } from '../nav'
 import { fetchJson } from '../server'
 
@@ -71,7 +72,9 @@ export default async function UsagePage() {
         <tbody>
           {repos.map((r) => (
             <tr key={r.repo}>
-              <td>{r.repo}</td>
+              <td>
+                <Link href={`/sessions?repo=${encodeURIComponent(r.repo)}`}>{r.repo}</Link>
+              </td>
               <td style={{ textAlign: 'right' }}>{r.sessions}</td>
               <td style={{ textAlign: 'right' }}>{fmt.format(r.turns)}</td>
               <td style={{ textAlign: 'right' }}>{fmt.format(r.inputTokens)}</td>
