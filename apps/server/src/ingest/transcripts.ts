@@ -31,6 +31,7 @@ type Line = {
       input_tokens: number
       cache_read_input_tokens?: number
       cache_creation_input_tokens?: number
+      cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
       output_tokens: number
     }
     content?: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }>
@@ -93,6 +94,7 @@ async function parseFile(path: string): Promise<Parsed | null> {
         inputTokens: m.usage.input_tokens,
         cacheReadTokens: m.usage.cache_read_input_tokens ?? 0,
         cacheCreationTokens: m.usage.cache_creation_input_tokens ?? 0,
+        cacheCreation1hTokens: m.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0,
         outputTokens: m.usage.output_tokens,
       })
     }

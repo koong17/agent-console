@@ -60,6 +60,9 @@ export const turns = pgTable(
     inputTokens: integer('input_tokens').notNull(),
     cacheReadTokens: integer('cache_read_tokens').notNull(),
     cacheCreationTokens: integer('cache_creation_tokens').notNull(),
+    // 캐시 쓰기는 5분짜리와 1시간짜리 단가가 다르다(1.25x vs 2x). 위 합계 중 1시간 분량만
+    // 따로 둔다. 5분 분량 = 합계 - 1시간. Claude Code는 1시간 캐시를 쓴다.
+    cacheCreation1hTokens: integer('cache_creation_1h_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull(),
   },
   (t) => [index('turns_session_ts_idx').on(t.sessionId, t.ts)],
