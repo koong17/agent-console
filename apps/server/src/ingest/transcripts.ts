@@ -1,7 +1,7 @@
 // Claude Code transcript(~/.claude/projects/<cwd-slug>/<session>.jsonl)를 읽어
 // sessions / turns / skill_invocations에 넣는다.
 //
-// 실행: pnpm ingest:transcripts
+// 진입점은 둘이다. CLI(pnpm ingest:transcripts, cli.ts)와 서버 안 스케줄러(scheduler.ts).
 // 여러 번 돌려도 안전하다. 키가 원본 ID라 이미 있는 행은 DB가 거절하고,
 // 우리는 그 거절을 에러가 아니라 "건너뜀"으로 처리한다(onConflictDoNothing).
 
@@ -10,7 +10,7 @@ import { glob } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
-import { db, pool } from '../db/index.js'
+import { db } from '../db/index.js'
 import { sessions, turns, skillInvocations } from '../db/schema.js'
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
@@ -162,25 +162,18 @@ async function ingestFile(path: string) {
   })
 }
 
-async function main() {
+export type IngestSummary = { files: number; turns: number; skills: number; durationMs: number }
+
+export async function ingestTranscripts(): Promise<IngestSummary> {
   const started = Date.now()
-  let files = 0
-  const total = { turns: 0, skills: 0 }
+  const total = { files: 0, turns: 0, skills: 0 }
 
   for await (const path of glob(join(PROJECTS_DIR, '*', '*.jsonl'))) {
     const r = await ingestFile(path)
-    files++
+    total.files++
     total.turns += r.turns
     total.skills += r.skills
   }
 
-  console.log(
-    `files=${files} turns+${total.turns} skills+${total.skills} in ${Date.now() - started}ms`,
-  )
-  await pool.end()
+  return { ...total, durationMs: Date.now() - started }
 }
-
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})

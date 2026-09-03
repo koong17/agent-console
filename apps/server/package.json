@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "db:push": "drizzle-kit push",
-    "ingest:transcripts": "tsx src/ingest/transcripts.ts",
+    "ingest:transcripts": "tsx src/ingest/cli.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
