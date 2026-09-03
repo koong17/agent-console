@@ -36,52 +36,50 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
     <main>
       <Nav />
       <h1>
-        <Link href={`/sessions?repo=${encodeURIComponent(session.repo)}`}>{session.repo}</Link> ·{' '}
-        {session.id.slice(0, 8)}
+        <Link href={`/sessions?repo=${encodeURIComponent(session.repo)}`}>{session.repo}</Link>
+        <span className="sub"> · {session.id.slice(0, 8)}</span>
       </h1>
-      <p>
-        {session.cwd} · {session.gitBranch ?? '-'} · {session.startedAt.slice(0, 16).replace('T', ' ')} ~{' '}
-        {fmtTime(session.lastSeenAt)}
+      <p className="summary">
+        <span className="mono">{session.cwd}</span> · {session.gitBranch ?? '-'} ·{' '}
+        <span className="mono">
+          {session.startedAt.slice(0, 16).replace('T', ' ')} ~ {fmtTime(session.lastSeenAt)}
+        </span>
+        <br />
+        응답 <strong>{turns.length}</strong>개 · API 환산 비용 <strong>{fmtUsd(totalCostUsd)}</strong>
       </p>
-      <p>
-        응답 {turns.length}개 · API 환산 비용 <strong>{fmtUsd(totalCostUsd)}</strong>
-      </p>
-      <table cellPadding={6} style={{ borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #999' }}>
-            <th>time</th>
-            <th>model</th>
-            <th style={{ textAlign: 'right' }}>input</th>
-            <th style={{ textAlign: 'right' }}>cache read</th>
-            <th style={{ textAlign: 'right' }}>cache write</th>
-            <th style={{ textAlign: 'right' }}>output</th>
-            <th style={{ textAlign: 'right' }}>cost</th>
-            <th style={{ width: 200 }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {turns.map((t) => (
-            <tr key={t.id}>
-              <td>{fmtTime(t.ts)}</td>
-              <td>{t.model.replace('claude-', '')}</td>
-              <td style={{ textAlign: 'right' }}>{fmtNum(t.inputTokens)}</td>
-              <td style={{ textAlign: 'right' }}>{fmtNum(t.cacheReadTokens)}</td>
-              <td style={{ textAlign: 'right' }}>{fmtNum(t.cacheCreationTokens)}</td>
-              <td style={{ textAlign: 'right' }}>{fmtNum(t.outputTokens)}</td>
-              <td style={{ textAlign: 'right' }}>{fmtUsd(t.costUsd)}</td>
-              <td>
-                <div
-                  style={{
-                    height: 10,
-                    width: maxCost ? `${((t.costUsd ?? 0) / maxCost) * 100}%` : 0,
-                    background: 'steelblue',
-                  }}
-                />
-              </td>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th className="num">time</th>
+              <th>model</th>
+              <th className="num">input</th>
+              <th className="num">cache read</th>
+              <th className="num">cache write</th>
+              <th className="num">output</th>
+              <th className="num">cost</th>
+              <th className="bar-cell"></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {turns.map((t) => (
+              <tr key={t.id}>
+                <td className="num">{fmtTime(t.ts)}</td>
+                <td>{t.model.replace('claude-', '')}</td>
+                <td className="num">{fmtNum(t.inputTokens)}</td>
+                <td className="num">{fmtNum(t.cacheReadTokens)}</td>
+                <td className="num">{fmtNum(t.cacheCreationTokens)}</td>
+                <td className="num">{fmtNum(t.outputTokens)}</td>
+                <td className="num">{fmtUsd(t.costUsd)}</td>
+                <td className="bar-cell">
+                  {/* 폭은 데이터에 따라 바뀌므로 인라인. DESIGN.md 7절의 유일한 예외. */}
+                  <div className="bar" style={{ width: maxCost ? `${((t.costUsd ?? 0) / maxCost) * 100}%` : 0 }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </main>
   )
 }

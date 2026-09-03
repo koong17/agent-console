@@ -1,0 +1,219 @@
+/* 토큰과 공용 클래스. 규칙은 DESIGN.md. 컴포넌트는 여기 있는 변수와 클래스만 쓴다. */
+
+:root {
+  --canvas: #fafafa;
+  --elevated: #ffffff;
+  --well: #f2f2f2;
+  --hover: #ebebeb;
+  --hairline: #ebebeb;
+  --hairline-strong: #c9c9c9;
+
+  --ink: #171717;
+  --body: #4d4d4d;
+  --mute: #8f8f8f;
+  --faint: #a1a1a1;
+
+  --link: #0070f3;
+  --link-deep: #0761d1;
+  --link-soft: #d3e5ff;
+  --error: #ee0000;
+  --error-deep: #c50000;
+  --warning: #f5a623;
+  --warning-deep: #ab570a;
+  --warning-soft: #ffefcf;
+  --success: #45a557;
+
+  --radius: 6px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #0a0a0a;
+    --elevated: #111111;
+    --well: #1a1a1a;
+    --hover: #1f1f1f;
+    --hairline: #2e2e2e;
+    --hairline-strong: #454545;
+
+    --ink: #ededed;
+    --body: #a1a1a1;
+    --mute: #8f8f8f;
+    --faint: #666666;
+
+    --link: #0072f5;
+    --link-deep: #52a8ff;
+    --link-soft: #10233d;
+    --error: #ff6166;
+    --error-deep: #e5484d;
+    --warning-deep: #ffc553;
+    --warning-soft: #3d2a05;
+    --success: #62c073;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--body);
+  font-family: var(--font-geist-sans), Inter, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--link-deep);
+  text-decoration: underline;
+}
+
+code,
+.mono {
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 페이지 뼈대 */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px 64px;
+}
+
+.nav {
+  display: flex;
+  gap: 4px;
+  padding: 12px 0;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--hairline);
+}
+.nav a {
+  color: var(--body);
+  padding: 4px 8px;
+  border-radius: var(--radius);
+}
+.nav a:hover {
+  color: var(--ink);
+  background: var(--hover);
+  text-decoration: none;
+}
+.nav a[aria-current='page'] {
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: -0.28px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.4px;
+}
+h1 .sub {
+  color: var(--mute);
+  font-weight: 400;
+}
+h1 a {
+  color: inherit;
+}
+
+.summary {
+  margin: 0 0 24px;
+  color: var(--mute);
+  font-size: 12px;
+  line-height: 16px;
+}
+.summary strong {
+  color: var(--ink);
+  font-weight: 500;
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+section + section {
+  margin-top: 40px;
+}
+
+h2 {
+  margin: 0 0 12px;
+  color: var(--mute);
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+/* 표 */
+.table-wrap {
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th,
+td {
+  height: 36px;
+  padding: 0 12px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--hairline);
+}
+th {
+  color: var(--mute);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+tbody tr:hover {
+  background: var(--hover);
+}
+td:first-child {
+  color: var(--ink);
+}
+.num {
+  text-align: right;
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+tr.is-error td {
+  color: var(--error);
+}
+.bar-cell {
+  width: 160px;
+}
+.bar {
+  height: 8px;
+  border-radius: 2px;
+  background: var(--link);
+}
+
+/* 상태 */
+.state {
+  color: var(--mute);
+}
+.state-error {
+  color: var(--error);
+}
+.state pre,
+.state-error + pre {
+  margin: 8px 0 0;
+  color: var(--mute);
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+}
