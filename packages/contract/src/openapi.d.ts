@@ -408,60 +408,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/harness/zombies": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Default Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** Format: date-time */
-                            harnessChangedAt: string;
-                            /** @description 가장 최근에 바뀐 하네스 파일 */
-                            changedFile: string;
-                            activeWindowHours: number;
-                            sessions: {
-                                id: string;
-                                repo: string;
-                                cwd: string;
-                                /** Format: date-time */
-                                startedAt: string;
-                                /** Format: date-time */
-                                lastSeenAt: string;
-                                turns: number;
-                                ageDays: number;
-                                /** @description 하네스 마지막 변경 시각 - 세션 시작 시각 (일) */
-                                behindDays: number;
-                            }[];
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/ingest/status": {
         parameters: {
             query?: never;
