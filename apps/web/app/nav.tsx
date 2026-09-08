@@ -7,7 +7,7 @@ const items = [
   { href: '/', label: 'traces' },
   { href: '/usage', label: 'usage' },
   { href: '/sessions', label: 'sessions' },
-  { href: '/rules', label: 'rules' },
+  { href: '/harness', label: 'harness' },
 ]
 
 // 현재 페이지 표시에 usePathname이 필요해서 클라이언트 컴포넌트다.

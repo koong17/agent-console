@@ -1,10 +1,16 @@
+import { readdir, stat } from 'node:fs/promises'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { Type } from 'typebox'
-import { sql } from 'drizzle-orm'
+import { and, count, desc, eq, gt, lt, sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { db } from './db/index.js'
-import { skillInvocations, gateEvents } from './db/schema.js'
+import { sessions, turns, skillInvocations, gateEvents } from './db/schema.js'
 import { DateTime, Nullable } from './schemas.js'
 
+// 하네스 건강: 규칙이 살아 있나(/harness/rules), 세션이 최신 설정을 쓰나(/harness/zombies).
+
+// ---------------------------------------------------------------------------
 // 죽은 규칙 알람.
 //
 // 이 프로젝트의 출발점은 suah-judge 라우터가 한 달 동안 조용히 죽어 있었던 사건이다.
@@ -65,8 +71,53 @@ function judge(total: number, silenceDays: number, medianGapDays: number | null)
 
 const STATUS_ORDER: Record<Status, number> = { dead: 0, quiet: 1, ok: 2, insufficient: 3 }
 
-export function ruleRoutes(app: App) {
-  app.get('/rules', { schema: { response: { 200: RulesReport } } }, async () => {
+// 최근 24시간 안에 활동이 있어야 "살아 있는" 세션으로 본다. 그보다 오래 조용하면 닫힌 세션일 확률이 높고,
+// 닫힌 세션은 재시작할 것도 없다.
+const ACTIVE_WINDOW_HOURS = 24
+
+const ZombieSession = Type.Object({
+  id: Type.String(),
+  repo: Type.String(),
+  cwd: Type.String(),
+  startedAt: DateTime,
+  lastSeenAt: DateTime,
+  turns: Type.Integer(),
+  ageDays: Type.Number(),
+  behindDays: Type.Number({ description: '하네스 마지막 변경 시각 - 세션 시작 시각 (일)' }),
+})
+
+const ZombieReport = Type.Object({
+  harnessChangedAt: DateTime,
+  changedFile: Type.String({ description: '가장 최근에 바뀐 하네스 파일' }),
+  activeWindowHours: Type.Integer(),
+  sessions: Type.Array(ZombieSession),
+})
+
+// settings.json 과 hooks/*.sh 의 mtime 중 최댓값. 파일이 없으면 epoch 0 이라 좀비가 없다고 나온다.
+async function harnessChangedAt(): Promise<{ at: Date; file: string }> {
+  const base = join(homedir(), '.claude')
+  const candidates = [join(base, 'settings.json')]
+  try {
+    for (const f of await readdir(join(base, 'hooks'))) {
+      if (f.endsWith('.sh')) candidates.push(join(base, 'hooks', f))
+    }
+  } catch {
+    // hooks 폴더가 없어도 settings.json 만으로 진행
+  }
+  let best = { at: new Date(0), file: '(none)' }
+  for (const f of candidates) {
+    try {
+      const st = await stat(f)
+      if (st.mtime > best.at) best = { at: st.mtime, file: f.replace(base, '~/.claude') }
+    } catch {
+      // 없는 파일은 건너뛴다
+    }
+  }
+  return best
+}
+
+export function harnessRoutes(app: App) {
+  app.get('/harness/rules', { schema: { response: { 200: RulesReport } } }, async () => {
     // 세 단계 CTE.
     //  ev   : 스킬 호출과 게이트 울림을 한 목록으로. 게이트는 nudged만 센다(throttled는 "울림"이 아니다).
     //  gaps : LAG 윈도우 함수로 "같은 규칙의 직전 호출"을 옆에 가져와 간격을 계산한다.
@@ -134,6 +185,48 @@ export function ruleRoutes(app: App) {
         deadFloorDays: DEAD_FLOOR_DAYS,
       },
       rules,
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // 좀비 세션 레이더.
+  //
+  // Claude Code는 훅 설정(settings.json)과 훅 스크립트를 세션이 시작될 때 읽는다. 그 뒤에 설정을
+  // 고쳐도 이미 떠 있는 세션은 옛 설정으로 계속 돈다. 2026-08 게이트 측정 때 손으로 찾은 함정이다.
+  // 그래서 "하네스가 마지막으로 바뀐 시각"보다 먼저 시작했는데 최근에도 활동한 세션을 고른다.
+  // 그 목록이 곧 "재시작해야 새 규칙을 받는 세션"이다.
+  //
+  // 하네스 변경 시각 = ~/.claude/settings.json 과 ~/.claude/hooks/*.sh 중 가장 최근 수정 시각.
+  // 파일 mtime 을 그대로 쓴다. git 이력이 없는 폴더라 이게 유일한 근거다.
+  app.get('/harness/zombies', { schema: { response: { 200: ZombieReport } } }, async () => {
+    const changed = await harnessChangedAt()
+    const activeSince = new Date(Date.now() - ACTIVE_WINDOW_HOURS * 60 * 60 * 1000)
+
+    const rows = await db
+      .select({
+        id: sessions.id,
+        repo: sessions.repo,
+        cwd: sessions.cwd,
+        startedAt: sessions.startedAt,
+        lastSeenAt: sessions.lastSeenAt,
+        turns: count(turns.id),
+      })
+      .from(sessions)
+      .leftJoin(turns, eq(turns.sessionId, sessions.id))
+      .where(and(lt(sessions.startedAt, changed.at), gt(sessions.lastSeenAt, activeSince)))
+      .groupBy(sessions.id)
+      .orderBy(desc(sessions.lastSeenAt))
+
+    return {
+      harnessChangedAt: changed.at,
+      changedFile: changed.file,
+      activeWindowHours: ACTIVE_WINDOW_HOURS,
+      sessions: rows.map((r) => ({
+        ...r,
+        ageDays: (r.lastSeenAt.getTime() - r.startedAt.getTime()) / 86400000,
+        // 세션이 놓친 하네스 변경이 며칠 전 것인지. 클수록 오래 묵은 설정으로 돌고 있다.
+        behindDays: (changed.at.getTime() - r.startedAt.getTime()) / 86400000,
+      })),
     }
   })
 }

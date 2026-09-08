@@ -7,7 +7,7 @@ import { db } from './db/index.js'
 import { tracePlugin, traceRoutes } from './trace.js'
 import { usageRoutes } from './usage.js'
 import { sessionRoutes } from './sessions.js'
-import { ruleRoutes } from './rules.js'
+import { harnessRoutes } from './harness.js'
 import { ingestScheduler } from './ingest/scheduler.js'
 
 // 앱 조립과 listen을 분리한다. listen 없이 조립만 하면 OpenAPI 스펙을 파일로
@@ -33,7 +33,7 @@ export async function buildApp({ ingest = true }: BuildOptions = {}) {
   traceRoutes(app)
   usageRoutes(app)
   sessionRoutes(app)
-  ruleRoutes(app)
+  harnessRoutes(app)
   ingestScheduler(app, { schedule: ingest })
 
   // 스펙 자체도 엔드포인트로. 브라우저에서 바로 확인할 수 있다.
