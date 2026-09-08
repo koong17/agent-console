@@ -6,3 +6,6 @@ packages:
 # 예전 키 onlyBuiltDependencies는 pnpm 11에서 무시되고 allowBuilds로 바뀌었다.
 allowBuilds:
   esbuild: true
+
+minimumReleaseAgeExclude:
+  - typebox@1.3.28

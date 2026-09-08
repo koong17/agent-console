@@ -1,9 +1,46 @@
 import type { FastifyInstance } from 'fastify'
+import { Type } from 'typebox'
 import { desc } from 'drizzle-orm'
+import type { App } from './app.js'
 import { db } from './db/index.js'
 import { traces, type Trace } from './db/schema.js'
 
 export type { Trace }
+
+// 응답 스키마. DB의 Trace와 같은 모양이지만 startedAt이 Date가 아니라 문자열이다.
+// 이 경계(DB 타입 → 전송 타입)를 스키마가 명시한다. 여기 없는 필드는 응답에서 잘린다.
+export const TraceSchema = Type.Object(
+  {
+    id: Type.Integer(),
+    requestId: Type.String(),
+    method: Type.String(),
+    url: Type.String(),
+    statusCode: Type.Integer(),
+    durationMs: Type.Integer(),
+    startedAt: Type.String({ format: 'date-time' }),
+  },
+  { $id: 'Trace' },
+)
+
+export function traceRoutes(app: App) {
+  app.get(
+    '/traces',
+    {
+      schema: {
+        // querystring 스키마가 있으면 Fastify가 문자열 "50"을 숫자 50으로 바꾸고,
+        // 범위 밖이면 우리가 코드를 안 써도 400을 돌려준다.
+        querystring: Type.Object({
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, default: 100 })),
+        }),
+        response: { 200: Type.Array(TraceSchema) },
+      },
+    },
+    async (req) => {
+      const rows = await listTraces(req.query.limit)
+      return rows.map((t) => ({ ...t, startedAt: t.startedAt.toISOString() }))
+    },
+  )
+}
 
 export async function listTraces(limit = 100): Promise<Trace[]> {
   return db.select().from(traces).orderBy(desc(traces.id)).limit(limit)

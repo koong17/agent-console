@@ -1,0 +1,147 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "agent-console",
+    "version": "0.1.0"
+  },
+  "components": {
+    "schemas": {}
+  },
+  "paths": {
+    "/traces": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "requestId",
+                      "method",
+                      "url",
+                      "statusCode",
+                      "durationMs",
+                      "startedAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "requestId": {
+                        "type": "string"
+                      },
+                      "method": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "statusCode": {
+                        "type": "integer"
+                      },
+                      "durationMs": {
+                        "type": "integer"
+                      },
+                      "startedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "title": "Trace"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/usage/repos": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/usage/daily": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/usage/gates": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/usage/skills": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/sessions/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:4000"
+    }
+  ]
+}

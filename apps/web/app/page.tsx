@@ -1,19 +1,7 @@
 import { AutoRefresh } from './auto-refresh'
 import { Nav } from './nav'
-import { fetchJson } from './server'
+import { api } from './server'
 import { fmtTime } from './format'
-
-// 서버 쪽 Trace 타입의 JSON 직렬화 형태. Date는 전송 중 문자열이 된다.
-// packages/contract가 생기면 그쪽 생성물로 대체한다.
-type Trace = {
-  id: number
-  requestId: string
-  method: string
-  url: string
-  statusCode: number
-  durationMs: number
-  startedAt: string
-}
 
 // 느린 요청 기준. 이 이상이면 행을 에러 색으로 표시한다.
 const SLOW_MS = 200
@@ -21,7 +9,9 @@ const SLOW_MS = 200
 // 서버 컴포넌트. 이 fetch는 브라우저가 아니라 Next 서버 프로세스에서 실행된다.
 // 그래서 Fastify에 CORS 설정 없이도 4000 포트를 바로 부를 수 있다.
 export default async function Page() {
-  const traces = await fetchJson<Trace[]>('/traces?limit=50')
+  // 경로와 쿼리가 계약으로 검사된다. '/trace' 오타, limit: '50' 문자열 모두 컴파일 에러.
+  const { data: traces, error } = await api.GET('/traces', { params: { query: { limit: 50 } } })
+  if (error || !traces) throw new Error(`/traces 응답 실패`)
 
   return (
     <main>
