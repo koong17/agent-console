@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
 import { api, type ApiData } from '../server'
-import { fmtDay, fmtNum, fmtUsd } from '../format'
+import { fmtDay, fmtMinute, fmtNum, fmtUsd } from '../format'
 import { DailyChart } from './daily-chart'
 
 // openapi-fetch 결과를 data로 좁힌다. 실패면 throw 해서 아래 catch가 에러 화면을 그린다.
@@ -139,7 +139,7 @@ export default async function UsagePage() {
                 <tbody>
                   {gates.events.map((e) => (
                     <tr key={e.id} className={e.outcome === 'nudged' && !e.complied ? 'is-error' : undefined}>
-                      <td className="mono">{e.ts.slice(0, 16).replace('T', ' ')}</td>
+                      <td className="mono">{fmtMinute(e.ts)}</td>
                       <td>{e.repo ?? '-'}</td>
                       <td>{e.triggerSkill}</td>
                       <td>{e.outcome}</td>

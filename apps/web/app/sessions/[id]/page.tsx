@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Nav } from '../../nav'
 import { api } from '../../server'
-import { fmtNum, fmtTime, fmtUsd } from '../../format'
+import { fmtMinute, fmtNum, fmtTime, fmtUsd } from '../../format'
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -25,7 +25,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       <p className="summary">
         <span className="mono">{session.cwd}</span> · {session.gitBranch ?? '-'} ·{' '}
         <span className="mono">
-          {session.startedAt.slice(0, 16).replace('T', ' ')} ~ {fmtTime(session.lastSeenAt)}
+          {fmtMinute(session.startedAt)} ~ {fmtTime(session.lastSeenAt)}
         </span>
         <br />
         응답 <strong>{turns.length}</strong>개 · API 환산 비용 <strong>{fmtUsd(totalCostUsd)}</strong>
