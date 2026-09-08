@@ -14,3 +14,13 @@ export type ApiData<P extends keyof paths> = paths[P] extends {
 }
   ? T
   : never
+
+// openapi-fetch 결과를 data로 좁힌다. 실패면 throw 해서 페이지의 catch가 에러 화면을 그린다.
+// 제네릭으로 받는 이유: 결과 타입이 (성공 | 실패) 유니온인데, 에러 응답이 정의되지 않은
+// 라우트는 실패 쪽이 never라서 if (res.error) 로 좁히면 never가 된다. 느슨한 형태로 받아 피한다.
+export function unwrap<T>(res: { data?: T; error?: unknown; response: Response }): T {
+  if (res.error || res.data === undefined) {
+    throw new Error(`${new URL(res.response.url).pathname} 응답 실패: ${res.response.status}`)
+  }
+  return res.data
+}

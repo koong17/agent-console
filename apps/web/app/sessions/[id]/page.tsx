@@ -1,15 +1,32 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Nav } from '../../nav'
-import { api } from '../../server'
+import { api, unwrap, type ApiData } from '../../server'
 import { fmtMinute, fmtNum, fmtTime, fmtUsd } from '../../format'
+import { ErrorState } from '../../error-state'
+
+// Next의 notFound()가 던지는 에러인지 구분한다. digest 필드가 'NEXT_HTTP_ERROR_FALLBACK;404' 로 시작한다.
+function isNextNotFound(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    String((err as { digest?: string }).digest ?? '').includes('404')
+  )
+}
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   // 404는 계약에 있는 정상 응답이다. error 쪽 타입이 { error: string } 으로 잡힌다.
-  const { data, error, response } = await api.GET('/sessions/{id}', { params: { path: { id } } })
-  if (response.status === 404) notFound()
-  if (error || !data) throw new Error(`/sessions/${id} 응답 실패: ${response.status}`)
+  let data: ApiData<'/sessions/{id}'>
+  try {
+    const res = await api.GET('/sessions/{id}', { params: { path: { id } } })
+    if (res.response.status === 404) notFound()
+    data = unwrap(res)
+  } catch (err) {
+    // notFound()는 내부적으로 throw 로 동작한다. 그대로 다시 던져야 Next가 404 페이지를 그린다.
+    if (isNextNotFound(err)) throw err
+    return <ErrorState title="session" error={err} />
+  }
   const { session, turns, totalCostUsd } = data
 
   // 막대 길이 기준. 세션 안에서 가장 비싼 응답을 100%로 둔다.

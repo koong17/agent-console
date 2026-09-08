@@ -1,14 +1,19 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
-import { api } from '../server'
+import { api, unwrap, type ApiData } from '../server'
 import { fmtDay, fmtNum, fmtUsd } from '../format'
+import { ErrorState } from '../error-state'
 
 // Next 16: searchParams는 Promise다. 렌더 전에 await 해야 한다.
 export default async function SessionsPage({ searchParams }: { searchParams: Promise<{ repo?: string }> }) {
   const { repo } = await searchParams
   // repo가 undefined면 openapi-fetch가 쿼리스트링을 아예 붙이지 않는다. 인코딩도 맡긴다.
-  const { data: list, error } = await api.GET('/sessions', { params: { query: { repo } } })
-  if (error || !list) throw new Error('/sessions 응답 실패')
+  let list: ApiData<'/sessions'>
+  try {
+    list = unwrap(await api.GET('/sessions', { params: { query: { repo } } }))
+  } catch (err) {
+    return <ErrorState title="sessions" error={err} />
+  }
   const total = list.reduce<number | null>(
     (acc, s) => (acc === null || s.costUsd === null ? null : acc + s.costUsd),
     0,

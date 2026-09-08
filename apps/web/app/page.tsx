@@ -1,8 +1,9 @@
 import { AutoRefresh } from './auto-refresh'
 import { Nav } from './nav'
-import { api } from './server'
+import { api, unwrap, type ApiData } from './server'
 import { fmtTime } from './format'
 import { IngestStatus } from './ingest-status'
+import { ErrorState } from './error-state'
 
 // 느린 요청 기준. 이 이상이면 행을 에러 색으로 표시한다.
 const SLOW_MS = 200
@@ -11,13 +12,19 @@ const SLOW_MS = 200
 // 그래서 Fastify에 CORS 설정 없이도 4000 포트를 바로 부를 수 있다.
 export default async function Page() {
   // 경로와 쿼리가 계약으로 검사된다. '/trace' 오타, limit: '50' 문자열 모두 컴파일 에러.
-  const [t, i] = await Promise.all([
-    api.GET('/traces', { params: { query: { limit: 50 } } }),
-    api.GET('/ingest/status'),
-  ])
-  if (t.error || !t.data) throw new Error('/traces 응답 실패')
-  if (i.error || !i.data) throw new Error('/ingest/status 응답 실패')
-  const traces = t.data
+  let traces: ApiData<'/traces'>
+  let ingest: ApiData<'/ingest/status'>
+  try {
+    const [t, i] = await Promise.all([
+      api.GET('/traces', { params: { query: { limit: 50 } } }),
+      api.GET('/ingest/status'),
+    ])
+    traces = unwrap(t)
+    ingest = unwrap(i)
+  } catch (err) {
+    // 서버나 DB가 죽어 있으면 여기로 온다. fetch 자체가 실패(ECONNREFUSED)해도 잡힌다.
+    return <ErrorState title="traces" error={err} />
+  }
 
   return (
     <main>
@@ -26,7 +33,7 @@ export default async function Page() {
       <p className="summary">
         최근 <strong>{traces.length}</strong>건 · 2초마다 갱신 · <strong>{SLOW_MS}ms</strong> 넘으면 빨강
       </p>
-      <IngestStatus status={i.data} />
+      <IngestStatus status={ingest} />
       <AutoRefresh intervalMs={2000} />
       <div className="table-wrap">
         <table>

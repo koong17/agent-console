@@ -1,15 +1,9 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
-import { api, type ApiData } from '../server'
+import { api, unwrap, type ApiData } from '../server'
 import { fmtDay, fmtMinute, fmtNum, fmtUsd } from '../format'
 import { DailyChart } from './daily-chart'
-
-// openapi-fetch 결과를 data로 좁힌다. 실패면 throw 해서 아래 catch가 에러 화면을 그린다.
-function unwrap<T>(res: { data?: T; error?: unknown; response: Response }): T {
-  if (res.error || res.data === undefined)
-    throw new Error(`${res.response.url} 응답 실패: ${res.response.status}`)
-  return res.data
-}
+import { ErrorState } from '../error-state'
 
 export default async function UsagePage() {
   // 두 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
@@ -30,14 +24,7 @@ export default async function UsagePage() {
     daily = unwrap(d)
     gates = unwrap(g)
   } catch (err) {
-    return (
-      <main>
-        <Nav />
-        <h1>usage</h1>
-        <p className="state-error">서버에서 데이터를 못 받았어요. Fastify(4000)가 켜져 있는지 확인하세요.</p>
-        <pre>{err instanceof Error ? err.message : String(err)}</pre>
-      </main>
-    )
+    return <ErrorState title="usage" error={err} />
   }
 
   if (repos.length === 0) {
