@@ -186,7 +186,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/usage/skills": {
+    "/usage/skills/weekly": {
         parameters: {
             query?: never;
             header?: never;
@@ -195,7 +195,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    weeks?: number;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -209,10 +211,14 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            skill: string;
-                            invocations: number;
-                            lastUsedAt: string | null;
-                        }[];
+                            weeks: string[];
+                            rows: {
+                                skill: string;
+                                /** @description weeks와 같은 길이, 같은 순서 */
+                                counts: number[];
+                                total: number;
+                            }[];
+                        };
                     };
                 };
             };

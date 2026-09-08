@@ -192,6 +192,10 @@ td:first-child {
 tr.is-error td {
   color: var(--error);
 }
+/* 행렬 표에서 0인 칸. 숫자 대신 점을 찍어 빈 자리임을 보이되 시선을 끌지 않는다. */
+.cell-zero {
+  color: var(--faint);
+}
 .bar-cell {
   width: 160px;
 }

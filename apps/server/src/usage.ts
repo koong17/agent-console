@@ -6,6 +6,16 @@ import { db } from './db/index.js'
 import { sessions, turns, skillInvocations, modelPrices, gateEvents } from './db/schema.js'
 import { totalCostUsd } from './cost.js'
 
+// 주어진 시각이 속한 주의 월요일(한국 시간)을 "YYYY-MM-DD 00:00Z" Date로 돌려준다.
+// UTC 자정으로 맞춰두면 toISOString().slice(0, 10)이 그대로 날짜 문자열이 된다.
+function mondayOf(at: Date): Date {
+  const kst = new Date(at.getTime() + 9 * 60 * 60 * 1000)
+  const day = kst.getUTCDay() // 0 = 일요일
+  const diffToMonday = (day + 6) % 7
+  const monday = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate() - diffToMonday))
+  return monday
+}
+
 const sumInt = (col: unknown) => sql<number>`coalesce(sum(${col}), 0)::bigint`.mapWith(Number)
 
 // 대시보드 첫 화면용 집계 두 개. 두 쿼리 모두 GROUP BY 하나짜리 단순 집계다.
@@ -46,10 +56,15 @@ const GateUsage = Type.Object({
   events: Type.Array(GateEvent),
 })
 
-const SkillUsage = Type.Object({
-  skill: Type.String(),
-  invocations: Type.Integer(),
-  lastUsedAt: Nullable(DateTime),
+const SkillWeekly = Type.Object({
+  weeks: Type.Array(Type.String({ description: '주 시작 월요일, YYYY-MM-DD, Asia/Seoul' })),
+  rows: Type.Array(
+    Type.Object({
+      skill: Type.String(),
+      counts: Type.Array(Type.Integer(), { description: 'weeks와 같은 길이, 같은 순서' }),
+      total: Type.Integer(),
+    }),
+  ),
 })
 
 export function usageRoutes(app: App) {
@@ -200,16 +215,65 @@ export function usageRoutes(app: App) {
     }
   })
 
-  // 스킬별 호출 수와 마지막 사용 시각.
-  app.get('/usage/skills', { schema: { response: { 200: Type.Array(SkillUsage) } } }, async () => {
-    return db
-      .select({
-        skill: skillInvocations.skill,
-        invocations: count(),
-        lastUsedAt: max(skillInvocations.ts),
-      })
-      .from(skillInvocations)
-      .groupBy(skillInvocations.skill)
-      .orderBy(desc(count()))
-  })
+  // 스킬별 주간 추세. 최근 N주, 주 시작은 월요일(Postgres date_trunc('week')의 기본), 한국 시간.
+  //
+  // 결과는 화면이 바로 표로 그릴 수 있게 서버에서 피벗한다:
+  //   weeks: ['2026-07-20', ..., '2026-09-07']          ← 열 (빈 주도 포함)
+  //   rows:  [{ skill, counts: [0, 3, ..., 5], total }]  ← 행, total 내림차순
+  // SQL은 (주, 스킬, 횟수)의 긴 형태로 받고 JS에서 접는다. SQL 피벗(crosstab)은 열 수가
+  // 고정이어야 해서 "최근 N주"처럼 변하는 축에 맞지 않는다.
+  app.get(
+    '/usage/skills/weekly',
+    {
+      schema: {
+        querystring: Type.Object({
+          weeks: Type.Optional(Type.Integer({ minimum: 1, maximum: 52, default: 8 })),
+        }),
+        response: { 200: SkillWeekly },
+      },
+    },
+    async (req) => {
+      const weeks = req.query.weeks ?? 8
+
+      // 이번 주 월요일(한국 시간)에서 (weeks - 1)주 전 월요일까지.
+      const rows = await db.execute<{ week: string; skill: string; invocations: number }>(sql`
+        with bounds as (
+          select date_trunc('week', (now() at time zone 'Asia/Seoul'))::date
+                 - ((${weeks}::int - 1) * 7) as first_week
+        )
+        select
+          to_char(date_trunc('week', ${skillInvocations.ts} at time zone 'Asia/Seoul'), 'YYYY-MM-DD') as week,
+          ${skillInvocations.skill} as skill,
+          count(*)::int as invocations
+        from ${skillInvocations}, bounds
+        where (${skillInvocations.ts} at time zone 'Asia/Seoul')::date >= bounds.first_week
+        group by 1, 2
+      `)
+
+      // 열: 최근 N주의 월요일 목록. 사용 없는 주도 자리를 차지해야 추세가 끊기지 않는다.
+      const thisMonday = mondayOf(new Date())
+      const weekKeys: string[] = []
+      for (let i = weeks - 1; i >= 0; i--) {
+        const d = new Date(thisMonday)
+        d.setUTCDate(d.getUTCDate() - i * 7)
+        weekKeys.push(d.toISOString().slice(0, 10))
+      }
+      const col = new Map(weekKeys.map((w, i) => [w, i]))
+
+      const bySkill = new Map<string, number[]>()
+      for (const r of rows.rows) {
+        const i = col.get(r.week)
+        if (i === undefined) continue // 경계 밖(시간대 반올림 등)은 버린다
+        const counts = bySkill.get(r.skill) ?? new Array<number>(weeks).fill(0)
+        counts[i] = Number(r.invocations)
+        bySkill.set(r.skill, counts)
+      }
+
+      const result = [...bySkill.entries()]
+        .map(([skill, counts]) => ({ skill, counts, total: counts.reduce((a, b) => a + b, 0) }))
+        .sort((a, b) => b.total - a.total)
+
+      return { weeks: weekKeys, rows: result }
+    },
+  )
 }

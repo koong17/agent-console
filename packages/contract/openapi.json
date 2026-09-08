@@ -297,39 +297,64 @@
         }
       }
     },
-    "/usage/skills": {
+    "/usage/skills/weekly": {
       "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 52,
+              "default": 8
+            },
+            "in": "query",
+            "name": "weeks",
+            "required": false
+          }
+        ],
         "responses": {
           "200": {
             "description": "Default Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "required": [
-                      "skill",
-                      "invocations",
-                      "lastUsedAt"
-                    ],
-                    "properties": {
-                      "skill": {
-                        "type": "string"
-                      },
-                      "invocations": {
-                        "type": "integer"
-                      },
-                      "lastUsedAt": {
-                        "anyOf": [
-                          {
-                            "type": "string",
-                            "format": "date-time"
+                  "type": "object",
+                  "required": [
+                    "weeks",
+                    "rows"
+                  ],
+                  "properties": {
+                    "weeks": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": "주 시작 월요일, YYYY-MM-DD, Asia/Seoul"
+                      }
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "skill",
+                          "counts",
+                          "total"
+                        ],
+                        "properties": {
+                          "skill": {
+                            "type": "string"
                           },
-                          {
-                            "type": "null"
+                          "counts": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer"
+                            },
+                            "description": "weeks와 같은 길이, 같은 순서"
+                          },
+                          "total": {
+                            "type": "integer"
                           }
-                        ]
+                        }
                       }
                     }
                   }

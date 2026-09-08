@@ -15,13 +15,13 @@ export default async function UsagePage() {
   // 두 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
   // 네 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
   let repos: ApiData<'/usage/repos'>
-  let skills: ApiData<'/usage/skills'>
+  let skills: ApiData<'/usage/skills/weekly'>
   let daily: ApiData<'/usage/daily'>
   let gates: ApiData<'/usage/gates'>
   try {
     const [r, s, d, g] = await Promise.all([
       api.GET('/usage/repos'),
-      api.GET('/usage/skills'),
+      api.GET('/usage/skills/weekly', { params: { query: { weeks: 8 } } }),
       api.GET('/usage/daily', { params: { query: { days: 30 } } }),
       api.GET('/usage/gates'),
     ])
@@ -64,8 +64,8 @@ export default async function UsagePage() {
       <Nav />
       <h1>usage</h1>
       <p className="summary">
-        레포 <strong>{repos.length}</strong>개 · 스킬 <strong>{skills.length}</strong>개 · API 환산 비용 합계{' '}
-        <strong>{fmtUsd(totalCost)}</strong>
+        레포 <strong>{repos.length}</strong>개 · 스킬 <strong>{skills.rows.length}</strong>개 · API 환산 비용
+        합계 <strong>{fmtUsd(totalCost)}</strong>
       </p>
 
       <section>
@@ -157,22 +157,35 @@ export default async function UsagePage() {
       </section>
 
       <section>
-        <h2>skills</h2>
+        <h2>skills · 8w</h2>
+        <p className="summary">
+          주별 호출 수. 열은 주 시작 월요일. 이번 주{' '}
+          <strong>{skills.rows.reduce((a, r) => a + (r.counts.at(-1) ?? 0), 0)}</strong>회 · 지난주{' '}
+          <strong>{skills.rows.reduce((a, r) => a + (r.counts.at(-2) ?? 0), 0)}</strong>회
+        </p>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>skill</th>
-                <th className="num">invocations</th>
-                <th>last used</th>
+                {skills.weeks.map((w) => (
+                  <th key={w} className="num">
+                    {w.slice(5)}
+                  </th>
+                ))}
+                <th className="num">total</th>
               </tr>
             </thead>
             <tbody>
-              {skills.map((s) => (
-                <tr key={s.skill}>
-                  <td>{s.skill}</td>
-                  <td className="num">{s.invocations}</td>
-                  <td className="mono">{fmtDay(s.lastUsedAt)}</td>
+              {skills.rows.map((r) => (
+                <tr key={r.skill}>
+                  <td>{r.skill}</td>
+                  {r.counts.map((c, i) => (
+                    <td key={skills.weeks[i]} className={c === 0 ? 'num cell-zero' : 'num'}>
+                      {c === 0 ? '·' : c}
+                    </td>
+                  ))}
+                  <td className="num">{r.total}</td>
                 </tr>
               ))}
             </tbody>
