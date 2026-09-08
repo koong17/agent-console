@@ -1,5 +1,5 @@
 import { Type } from 'typebox'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, lt } from 'drizzle-orm'
 import type { App } from '../app.js'
 import { db } from '../db/index.js'
 import { ingestRuns } from '../db/schema.js'
@@ -13,6 +13,8 @@ import { ingestAll } from './index.js'
 // 그대로 찍힌다. 그게 눈에 띄게 커지는 순간이 작업을 별도 프로세스(큐)로 빼는 시점이다.
 
 const INTERVAL_MS = 60 * 60 * 1000 // 1시간
+// 정상 실행은 수 초다. 이보다 오래 running이면 끝을 기록하지 못한 채 죽은 것으로 본다.
+const STALE_MS = 10 * 60 * 1000 // 10분
 
 type Trigger = 'startup' | 'interval' | 'manual'
 
@@ -42,6 +44,16 @@ type Options = {
   schedule?: boolean
 }
 
+// 오래 running인 행을 failed로 닫는다. 시작 시 정리는 "프로세스가 하나"라는 가정에 기대는데,
+// tsx watch가 빠르게 두 번 재시작하면 두 프로세스가 겹쳐 그 가정이 깨진다(2026-09-08 관찰).
+// 시간 기준은 그 가정이 없어도 동작한다. 멱등이라 자주 불러도 된다.
+async function closeStaleRuns() {
+  await db
+    .update(ingestRuns)
+    .set({ status: 'failed', finishedAt: new Date(), error: `stale: no finish within ${STALE_MS / 60000}m` })
+    .where(and(eq(ingestRuns.status, 'running'), lt(ingestRuns.startedAt, new Date(Date.now() - STALE_MS))))
+}
+
 export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
   // 겹침 방지는 여전히 메모리 플래그다. 프로세스가 하나라 이걸로 충분하고,
   // DB로 하려면 "running 행이 있나" 조회와 삽입 사이의 틈을 따로 막아야 한다.
@@ -53,6 +65,7 @@ export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
       return
     }
     running = true
+    await closeStaleRuns()
 
     const [row] = await db
       .insert(ingestRuns)
@@ -102,6 +115,8 @@ export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
     })
 
   app.get('/ingest/status', { schema: { response: { 200: IngestStatus } } }, async () => {
+    // 읽기 엔드포인트에서 쓰기를 하는 예외. 안 하면 실행 주기(1시간) 동안 화면이 "실행 중"으로 굳는다.
+    await closeStaleRuns()
     const recent = await db.select().from(ingestRuns).orderBy(desc(ingestRuns.id)).limit(10)
     return { current: recent.find((r) => r.status === 'running') ?? null, recent }
   })
