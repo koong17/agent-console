@@ -16,9 +16,63 @@ import { sessions, turns, skillInvocations } from '../db/schema.js'
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
 // transcript 한 줄. 필요한 필드만 적었다. 나머지는 무시된다.
+// Claude Code 내장 슬래시 명령. 사용자 메시지의 <command-name>에 나오지만 스킬이 아니다.
+// 이 목록에 없는 이름만 skill_invocations 에 넣는다. 새 내장 명령이 생기면 여기 추가.
+const BUILTIN_COMMANDS = new Set([
+  'clear',
+  'model',
+  'exit',
+  'quit',
+  'copy',
+  'login',
+  'logout',
+  'plugin',
+  'plugins',
+  'insights',
+  'resume',
+  'help',
+  'config',
+  'settings',
+  'status',
+  'cost',
+  'compact',
+  'memory',
+  'init',
+  'doctor',
+  'bug',
+  'review',
+  'permissions',
+  'mcp',
+  'agents',
+  'hooks',
+  'vim',
+  'terminal-setup',
+  'export',
+  'rename',
+  'tasks',
+  'artifacts',
+  'fast',
+  'loop',
+  'workflows',
+  'context',
+  'usage',
+  'upgrade',
+  'release-notes',
+  'add-dir',
+  'ide',
+  'install-github-app',
+  'install-slack-app',
+  'pr-comments',
+  'diff',
+  'rewind',
+  'theme',
+  'keybindings',
+])
+
 type Line = {
   type: string
   uuid?: string
+  isSidechain?: boolean
   sessionId?: string
   timestamp?: string
   cwd?: string
@@ -26,6 +80,7 @@ type Line = {
   version?: string
   message?: {
     id?: string
+    role?: string
     model?: string
     usage?: {
       input_tokens: number
@@ -34,8 +89,28 @@ type Line = {
       cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
       output_tokens: number
     }
-    content?: Array<{ type: string; id?: string; name?: string; input?: Record<string, unknown> }>
+    content?: MessageContent
   }
+}
+
+type MessageContent =
+  string | Array<{ type: string; id?: string; name?: string; text?: string; input?: Record<string, unknown> }>
+
+// 사용자 메시지 본문에서 "/스킬이름 인자" 입력을 찾는다. Claude Code는 이를
+//   <command-name>/feature-plan</command-name> ... <command-args>TMS-1234</command-args>
+// 형태로 기록한다. 한 메시지에 여러 개일 수 있어 배열로 돌려준다.
+function parseCommands(content: MessageContent | undefined) {
+  const texts: string[] =
+    typeof content === 'string' ? [content] : (content ?? []).map((c) => c.text ?? '').filter(Boolean)
+  const out: Array<{ skill: string; args: string }> = []
+  for (const t of texts) {
+    const names = [...t.matchAll(/<command-name>\/?([^<]+)<\/command-name>/g)].map((m) => m[1]!.trim())
+    const args = [...t.matchAll(/<command-args>([^<]*)<\/command-args>/g)].map((m) => m[1]!.trim())
+    names.forEach((name, i) => {
+      if (!BUILTIN_COMMANDS.has(name)) out.push({ skill: name, args: args[i] ?? '' })
+    })
+  }
+  return out
 }
 
 type Parsed = {
@@ -80,6 +155,23 @@ async function parseFile(path: string): Promise<Parsed | null> {
       if (line.gitBranch) session.gitBranch = line.gitBranch
     }
 
+    // 사용자가 직접 친 "/스킬" 입력. 도구 호출이 아니라서 아래 tool_use 루프에는 안 잡힌다.
+    if (line.type === 'user' && line.message && line.uuid) {
+      parseCommands(line.message.content).forEach((c, i) => {
+        skills.push({
+          // 사용자 메시지엔 tool_use id가 없다. 줄 uuid + 순번으로 고유 키를 만든다.
+          id: `cmd:${line.uuid}:${i}`,
+          sessionId: line.sessionId!,
+          repo: session?.repo ?? null,
+          ts,
+          skill: c.skill,
+          args: c.args,
+          source: 'command',
+        })
+      })
+      continue
+    }
+
     if (line.type !== 'assistant' || !line.message) continue
     const m = line.message
     // '<synthetic>'은 API 에러 등을 Claude Code가 만들어 넣은 가짜 응답. 토큰 0.
@@ -91,6 +183,7 @@ async function parseFile(path: string): Promise<Parsed | null> {
         sessionId: line.sessionId,
         ts,
         model: m.model,
+        sidechain: line.isSidechain === true,
         inputTokens: m.usage.input_tokens,
         cacheReadTokens: m.usage.cache_read_input_tokens ?? 0,
         cacheCreationTokens: m.usage.cache_creation_input_tokens ?? 0,
@@ -99,7 +192,7 @@ async function parseFile(path: string): Promise<Parsed | null> {
       })
     }
 
-    for (const block of m.content ?? []) {
+    for (const block of typeof m.content === 'string' ? [] : (m.content ?? [])) {
       if (block.type !== 'tool_use' || block.name !== 'Skill' || !block.id) continue
       const input = block.input ?? {}
       skills.push({
@@ -109,6 +202,7 @@ async function parseFile(path: string): Promise<Parsed | null> {
         ts,
         skill: String(input.skill ?? ''),
         args: String(input.args ?? ''),
+        source: 'tool',
       })
     }
   }
@@ -169,7 +263,12 @@ export type TranscriptSummary = { files: number; turns: number; skills: number }
 export async function ingestTranscripts(): Promise<TranscriptSummary> {
   const total = { files: 0, turns: 0, skills: 0 }
 
-  for await (const path of glob(join(PROJECTS_DIR, '*', '*.jsonl'))) {
+  // '**' 로 서브에이전트 파일까지 훑는다. 위치:
+  //   <proj>/<session>.jsonl                                  메인 대화
+  //   <proj>/<session>/subagents/agent-*.jsonl                Agent 도구 서브에이전트
+  //   <proj>/<session>/subagents/workflows/<wf>/agent-*.jsonl Workflow 도구 안의 에이전트
+  // 서브에이전트 줄의 sessionId는 부모와 같아서 같은 세션에 turns가 붙는다.
+  for await (const path of glob(join(PROJECTS_DIR, '**', '*.jsonl'))) {
     const r = await ingestFile(path)
     total.files++
     total.turns += r.turns

@@ -15,6 +15,9 @@ const rows = [
   ['claude-sonnet-5', 2, 2.5, 4, 0.2, 10],
   ['claude-sonnet-4-6', 3, 3.75, 6, 0.3, 15],
   ['claude-haiku-4-5', 1, 1.25, 2, 0.1, 5],
+  // 서브에이전트(Explore 등)는 날짜가 붙은 모델 ID로 기록된다. 단가표는 정확히 일치로 JOIN 하므로
+  // 날짜 붙은 ID도 행으로 둔다. 새 ID가 나오면 /usage/repos 비용이 null로 떠서 알 수 있다.
+  ['claude-haiku-4-5-20251001', 1, 1.25, 2, 0.1, 5],
 ].map(([model, input, w5m, w1h, read, output]) => ({
   model: String(model),
   inputUsd: String(input),

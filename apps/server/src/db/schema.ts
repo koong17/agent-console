@@ -1,4 +1,14 @@
-import { pgTable, serial, text, integer, numeric, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  serial,
+  text,
+  integer,
+  numeric,
+  boolean,
+  timestamp,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core'
 
 // ---------------------------------------------------------------------------
 // 자기 관찰: 이 서버가 받은 HTTP 요청
@@ -64,6 +74,10 @@ export const turns = pgTable(
     // 따로 둔다. 5분 분량 = 합계 - 1시간. Claude Code는 1시간 캐시를 쓴다.
     cacheCreation1hTokens: integer('cache_creation_1h_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull(),
+    // true면 서브에이전트(Agent 도구로 띄운 별도 대화)의 응답. transcript의 isSidechain.
+    // 서브에이전트 파일은 projects/<cwd>/<session>/subagents/**/*.jsonl 에 따로 있고 sessionId는
+    // 부모와 같다. 2026-09-08 발견: 이 파일들을 안 읽어 응답의 약 1/3, 비용이 그만큼 빠져 있었다.
+    sidechain: boolean('sidechain').notNull().default(false),
   },
   (t) => [index('turns_session_ts_idx').on(t.sessionId, t.ts)],
 )
@@ -81,6 +95,12 @@ export const skillInvocations = pgTable(
     ts: timestamp('ts', { withTimezone: true }).notNull(),
     skill: text('skill').notNull(),
     args: text('args').notNull().default(''),
+    // 스킬이 불린 경로. 'tool' = 모델이 Skill 도구로 호출(PreToolUse 훅이 울림),
+    // 'command' = 사용자가 "/이름" 으로 직접 입력(도구 호출이 없어 훅이 안 울림).
+    // 2026-09-08 발견: command 경로는 게이트 훅을 우회한다. 둘을 나눠야 준수율이 정직해진다.
+    source: text('source', { enum: ['tool', 'command'] })
+      .notNull()
+      .default('tool'),
   },
   (t) => [index('skill_invocations_skill_ts_idx').on(t.skill, t.ts)],
 )
