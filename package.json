@@ -6,7 +6,9 @@
     "dev:server": "pnpm --filter server dev",
     "dev:web": "pnpm --filter web dev",
     "contract": "pnpm --filter server openapi:emit && pnpm --filter @agent-console/contract generate",
-    "format": "prettier --write \"apps/*/src/**/*.ts\" \"apps/web/app/**/*.{ts,tsx}\""
+    "format": "prettier --write \"apps/*/src/**/*.ts\" \"apps/web/app/**/*.{ts,tsx}\"",
+    "contract:check": "sh scripts/contract-check.sh",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {
     "node": ">=26"

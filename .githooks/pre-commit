@@ -1,0 +1,15 @@
+#!/bin/sh
+# 서버 라우트를 바꾸고 계약(openapi.json, openapi.d.ts)을 다시 안 만들면 커밋을 막는다.
+# 서버 코드나 contract 패키지가 스테이징된 경우에만 돈다. 그 외 커밋은 비용 0.
+#
+# 설치: pnpm install 이 prepare 스크립트로 core.hooksPath 를 이 폴더로 잡는다.
+# 건너뛰기(비상시): git commit --no-verify
+
+set -e
+
+if ! git diff --cached --name-only | grep -qE '^(apps/server/src/|packages/contract/)'; then
+  exit 0
+fi
+
+echo "pre-commit: 계약 신선도 확인 (pnpm contract:check)"
+pnpm -s contract:check
