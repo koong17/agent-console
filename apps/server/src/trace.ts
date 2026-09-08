@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { Type } from 'typebox'
+import { DateTime } from './schemas.js'
 import { desc } from 'drizzle-orm'
 import type { App } from './app.js'
 import { db } from './db/index.js'
@@ -7,8 +8,7 @@ import { traces, type Trace } from './db/schema.js'
 
 export type { Trace }
 
-// 응답 스키마. DB의 Trace와 같은 모양이지만 startedAt이 Date가 아니라 문자열이다.
-// 이 경계(DB 타입 → 전송 타입)를 스키마가 명시한다. 여기 없는 필드는 응답에서 잘린다.
+// 응답 스키마. 여기 없는 필드는 응답에서 잘린다.
 export const TraceSchema = Type.Object(
   {
     id: Type.Integer(),
@@ -17,7 +17,7 @@ export const TraceSchema = Type.Object(
     url: Type.String(),
     statusCode: Type.Integer(),
     durationMs: Type.Integer(),
-    startedAt: Type.String({ format: 'date-time' }),
+    startedAt: DateTime,
   },
   { $id: 'Trace' },
 )
@@ -35,10 +35,7 @@ export function traceRoutes(app: App) {
         response: { 200: Type.Array(TraceSchema) },
       },
     },
-    async (req) => {
-      const rows = await listTraces(req.query.limit)
-      return rows.map((t) => ({ ...t, startedAt: t.startedAt.toISOString() }))
-    },
+    async (req) => listTraces(req.query.limit),
   )
 }
 

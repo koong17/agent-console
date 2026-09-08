@@ -1,50 +1,34 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
-import { fetchJson } from '../server'
+import { api, type ApiData } from '../server'
 import { fmtDay, fmtNum, fmtUsd } from '../format'
-import { DailyChart, type DailyUsage } from './daily-chart'
+import { DailyChart } from './daily-chart'
 
-type RepoUsage = {
-  repo: string
-  sessions: number
-  turns: number
-  inputTokens: number
-  outputTokens: number
-  costUsd: number | null
-  lastSeenAt: string | null
+// openapi-fetch 결과를 data로 좁힌다. 실패면 throw 해서 아래 catch가 에러 화면을 그린다.
+function unwrap<T>(res: { data?: T; error?: unknown; response: Response }): T {
+  if (res.error || res.data === undefined)
+    throw new Error(`${res.response.url} 응답 실패: ${res.response.status}`)
+  return res.data
 }
-
-type SkillUsage = {
-  skill: string
-  invocations: number
-  lastUsedAt: string
-}
-
-type GateEvent = {
-  id: number
-  sessionId: string
-  repo: string | null
-  ts: string
-  triggerSkill: string
-  outcome: 'nudged' | 'throttled'
-  complied: boolean
-}
-
-type GateUsage = { nudged: number; complied: number; rate: number | null; events: GateEvent[] }
 
 export default async function UsagePage() {
   // 두 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
-  let repos: RepoUsage[]
-  let skills: SkillUsage[]
-  let daily: DailyUsage[]
-  let gates: GateUsage
+  // 네 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
+  let repos: ApiData<'/usage/repos'>
+  let skills: ApiData<'/usage/skills'>
+  let daily: ApiData<'/usage/daily'>
+  let gates: ApiData<'/usage/gates'>
   try {
-    ;[repos, skills, daily, gates] = await Promise.all([
-      fetchJson<RepoUsage[]>('/usage/repos'),
-      fetchJson<SkillUsage[]>('/usage/skills'),
-      fetchJson<DailyUsage[]>('/usage/daily?days=30'),
-      fetchJson<GateUsage>('/usage/gates'),
+    const [r, s, d, g] = await Promise.all([
+      api.GET('/usage/repos'),
+      api.GET('/usage/skills'),
+      api.GET('/usage/daily', { params: { query: { days: 30 } } }),
+      api.GET('/usage/gates'),
     ])
+    repos = unwrap(r)
+    skills = unwrap(s)
+    daily = unwrap(d)
+    gates = unwrap(g)
   } catch (err) {
     return (
       <main>
@@ -129,13 +113,16 @@ export default async function UsagePage() {
       <section>
         <h2>gate</h2>
         {gates.nudged === 0 ? (
-          <p className="state">아직 게이트가 울린 기록이 없어요. 판단 스킬(code-review, feature-plan…)을 부르면 쌓여요.</p>
+          <p className="state">
+            아직 게이트가 울린 기록이 없어요. 판단 스킬(code-review, feature-plan…)을 부르면 쌓여요.
+          </p>
         ) : (
           <>
             <p className="summary">
               suah-judge 게이트 준수{' '}
               <strong>{gates.rate === null ? '-' : `${Math.round(gates.rate * 100)}%`}</strong> · 안내{' '}
-              <strong>{gates.nudged}</strong>회 중 <strong>{gates.complied}</strong>회 1시간 안에 suah-judge 호출
+              <strong>{gates.nudged}</strong>회 중 <strong>{gates.complied}</strong>회 1시간 안에 suah-judge
+              호출
             </p>
             <div className="table-wrap">
               <table>

@@ -71,7 +71,17 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            repo: string;
+                            sessions: number;
+                            turns: number;
+                            inputTokens: number;
+                            outputTokens: number;
+                            costUsd: number | null;
+                            lastSeenAt: string | null;
+                        }[];
+                    };
                 };
             };
         };
@@ -92,7 +102,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    days?: number;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -104,7 +116,16 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            /** @description YYYY-MM-DD, Asia/Seoul */
+                            day: string;
+                            sessions: number;
+                            turns: number;
+                            outputTokens: number;
+                            costUsd: number;
+                        }[];
+                    };
                 };
             };
         };
@@ -137,7 +158,23 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            nudged: number;
+                            complied: number;
+                            rate: number | null;
+                            events: {
+                                id: number;
+                                sessionId: string;
+                                repo: string | null;
+                                /** Format: date-time */
+                                ts: string;
+                                triggerSkill: string;
+                                outcome: "nudged" | "throttled";
+                                complied: boolean;
+                            }[];
+                        };
+                    };
                 };
             };
         };
@@ -170,7 +207,13 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            skill: string;
+                            invocations: number;
+                            lastUsedAt: string | null;
+                        }[];
+                    };
                 };
             };
         };
@@ -191,7 +234,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    repo?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -203,7 +248,21 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            id: string;
+                            repo: string;
+                            gitBranch: string | null;
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            lastSeenAt: string;
+                            turns: number;
+                            models: string[];
+                            outputTokens: number;
+                            costUsd: number | null;
+                        }[];
+                    };
                 };
             };
         };
@@ -238,78 +297,49 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            session: {
+                                id: string;
+                                cwd: string;
+                                repo: string;
+                                gitBranch: string | null;
+                                cliVersion: string | null;
+                                /** Format: date-time */
+                                startedAt: string;
+                                /** Format: date-time */
+                                lastSeenAt: string;
+                            };
+                            turns: {
+                                id: string;
+                                /** Format: date-time */
+                                ts: string;
+                                model: string;
+                                inputTokens: number;
+                                cacheReadTokens: number;
+                                cacheCreationTokens: number;
+                                outputTokens: number;
+                                costUsd: number | null;
+                            }[];
+                            totalCostUsd: number | null;
+                        };
+                    };
+                };
+                /** @description Default Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            error: string;
+                        };
+                    };
                 };
             };
         };
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/ingest/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Default Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/ingest/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Default Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
         delete?: never;
         options?: never;
         head?: never;

@@ -54,6 +54,10 @@ export async function ingestEvents(): Promise<{ gates: number }> {
   }
 
   if (rows.length === 0) return { gates: 0 }
-  const inserted = await db.insert(gateEvents).values(rows).onConflictDoNothing().returning({ id: gateEvents.id })
+  const inserted = await db
+    .insert(gateEvents)
+    .values(rows)
+    .onConflictDoNothing()
+    .returning({ id: gateEvents.id })
   return { gates: inserted.length }
 }

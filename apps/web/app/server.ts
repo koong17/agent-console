@@ -7,9 +7,10 @@ export const SERVER_URL = process.env.SERVER_URL ?? 'http://127.0.0.1:4000'
 // 서버 스키마에서 나온다. 서버가 필드를 바꾸면 여기서 tsc가 깨진다. 그게 목적이다.
 export const api = createClient<paths>({ baseUrl: SERVER_URL, cache: 'no-store' })
 
-// 계약에 아직 안 올라간 라우트용. 스키마가 붙는 대로 api.GET으로 옮기고 지운다.
-export async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${SERVER_URL}${path}`, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`${path} 응답 실패: ${res.status}`)
-  return res.json()
+// 계약에서 응답 타입을 꺼내는 단축키. 페이지가 타입을 다시 적지 않게 한다.
+// 예: ApiData<'/usage/daily'>  →  DailyUsage[]
+export type ApiData<P extends keyof paths> = paths[P] extends {
+  get: { responses: { 200: { content: { 'application/json': infer T } } } }
 }
+  ? T
+  : never

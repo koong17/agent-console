@@ -1,29 +1,14 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
-import { fetchJson } from '../server'
+import { api } from '../server'
 import { fmtDay, fmtNum, fmtUsd } from '../format'
 
-type SessionSummary = {
-  id: string
-  repo: string
-  gitBranch: string | null
-  startedAt: string
-  lastSeenAt: string
-  turns: number
-  models: string[]
-  costUsd: number | null
-  outputTokens: number
-}
-
 // Next 16: searchParams는 Promise다. 렌더 전에 await 해야 한다.
-export default async function SessionsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ repo?: string }>
-}) {
+export default async function SessionsPage({ searchParams }: { searchParams: Promise<{ repo?: string }> }) {
   const { repo } = await searchParams
-  const query = repo ? `?repo=${encodeURIComponent(repo)}` : ''
-  const list = await fetchJson<SessionSummary[]>(`/sessions${query}`)
+  // repo가 undefined면 openapi-fetch가 쿼리스트링을 아예 붙이지 않는다. 인코딩도 맡긴다.
+  const { data: list, error } = await api.GET('/sessions', { params: { query: { repo } } })
+  if (error || !list) throw new Error('/sessions 응답 실패')
   const total = list.reduce<number | null>(
     (acc, s) => (acc === null || s.costUsd === null ? null : acc + s.costUsd),
     0,
@@ -32,9 +17,7 @@ export default async function SessionsPage({
   return (
     <main>
       <Nav />
-      <h1>
-        sessions{repo && <span className="sub"> · {repo}</span>}
-      </h1>
+      <h1>sessions{repo && <span className="sub"> · {repo}</span>}</h1>
       <p className="summary">
         <strong>{list.length}</strong>개 세션 · API 환산 비용 합계 <strong>{fmtUsd(total)}</strong>
         {repo && (

@@ -1,4 +1,5 @@
-import type { FastifyInstance } from 'fastify'
+import { Type } from 'typebox'
+import type { App } from '../app.js'
 import { ingestAll, type IngestSummary } from './index.js'
 
 // ingestion을 서버 프로세스 안에서 주기적으로 돈다.
@@ -18,7 +19,23 @@ type RunState =
 // 프로세스 메모리에만 있다. 재시작하면 idle로 돌아간다.
 let state: RunState = { status: 'idle' }
 
-export function ingestScheduler(app: FastifyInstance) {
+const Summary = Type.Object({
+  files: Type.Integer(),
+  turns: Type.Integer(),
+  skills: Type.Integer(),
+  gates: Type.Integer(),
+  durationMs: Type.Integer(),
+})
+
+// RunState와 같은 모양을 스키마로도 적는다. 둘이 어긋나면 tsc가 핸들러 반환 타입에서 잡는다.
+const RunStateSchema = Type.Union([
+  Type.Object({ status: Type.Literal('idle') }),
+  Type.Object({ status: Type.Literal('running'), startedAt: Type.String() }),
+  Type.Object({ status: Type.Literal('done'), finishedAt: Type.String(), summary: Summary }),
+  Type.Object({ status: Type.Literal('failed'), finishedAt: Type.String(), error: Type.String() }),
+])
+
+export function ingestScheduler(app: App) {
   async function run(trigger: 'startup' | 'interval' | 'manual') {
     // 이전 실행이 아직 안 끝났으면 겹쳐 돌리지 않는다. 같은 파일을 두 트랜잭션이
     // 동시에 넣으면 한쪽이 키 충돌로 대기하거나 실패한다.
@@ -46,13 +63,17 @@ export function ingestScheduler(app: FastifyInstance) {
     setInterval(() => void run('interval'), INTERVAL_MS).unref()
   })
 
-  app.get('/ingest/status', async () => state)
+  app.get('/ingest/status', { schema: { response: { 200: RunStateSchema } } }, async () => state)
 
   // 수동 트리거. 기다리지 않고 바로 응답한다. 결과는 /ingest/status로 확인.
   // 기다리면 요청 하나가 몇 초를 점유하고, 그 시간이 /traces에 ingestion 비용으로 잡혀
   // 진짜 요청 지연과 구분이 안 된다.
-  app.post('/ingest/run', async (_req, reply) => {
-    void run('manual')
-    return reply.code(202).send({ accepted: true })
-  })
+  app.post(
+    '/ingest/run',
+    { schema: { response: { 202: Type.Object({ accepted: Type.Literal(true) }) } } },
+    async (_req, reply) => {
+      void run('manual')
+      return reply.code(202).send({ accepted: true })
+    },
+  )
 }

@@ -1,4 +1,6 @@
-import type { FastifyInstance } from 'fastify'
+import { Type } from 'typebox'
+import type { App } from './app.js'
+import { DateTime, Nullable } from './schemas.js'
 import { count, countDistinct, desc, eq, max, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
 import { sessions, turns, skillInvocations, modelPrices, gateEvents } from './db/schema.js'
@@ -7,16 +9,60 @@ import { totalCostUsd } from './cost.js'
 // 대시보드 첫 화면용 집계 두 개. 두 쿼리 모두 GROUP BY 하나짜리 단순 집계다.
 // 행 수(turns 1만)에서는 인덱스 없이도 빠르다. 느려지기 시작하면 /traces에 먼저 보인다.
 
-export function usageRoutes(app: FastifyInstance) {
+const RepoUsage = Type.Object({
+  repo: Type.String(),
+  sessions: Type.Integer(),
+  turns: Type.Integer(),
+  inputTokens: Type.Integer(),
+  outputTokens: Type.Integer(),
+  costUsd: Nullable(Type.Number()),
+  lastSeenAt: Nullable(DateTime),
+})
+
+const DailyUsage = Type.Object({
+  day: Type.String({ description: 'YYYY-MM-DD, Asia/Seoul' }),
+  sessions: Type.Integer(),
+  turns: Type.Integer(),
+  outputTokens: Type.Integer(),
+  costUsd: Type.Number(),
+})
+
+const GateEvent = Type.Object({
+  id: Type.Integer(),
+  sessionId: Type.String(),
+  repo: Nullable(Type.String()),
+  ts: DateTime,
+  triggerSkill: Type.String(),
+  outcome: Type.Union([Type.Literal('nudged'), Type.Literal('throttled')]),
+  complied: Type.Boolean(),
+})
+
+const GateUsage = Type.Object({
+  nudged: Type.Integer(),
+  complied: Type.Integer(),
+  rate: Nullable(Type.Number({ description: '0..1, nudged가 0이면 null' })),
+  events: Type.Array(GateEvent),
+})
+
+const SkillUsage = Type.Object({
+  skill: Type.String(),
+  invocations: Type.Integer(),
+  lastUsedAt: Nullable(DateTime),
+})
+
+export function usageRoutes(app: App) {
   // 레포별: 세션 수, 응답 수, 토큰. LEFT JOIN이라 turn이 없는 세션도 행으로 남는다.
-  app.get('/usage/repos', async () => {
+  app.get('/usage/repos', { schema: { response: { 200: Type.Array(RepoUsage) } } }, async () => {
     return db
       .select({
         repo: sessions.repo,
         sessions: countDistinct(sessions.id),
         turns: count(turns.id),
         // sum()은 numeric이라 문자열로 온다. 정수 범위 안이므로 bigint로 캐스팅해 숫자로 받는다.
-        inputTokens: sql<number>`coalesce(sum(${turns.inputTokens} + ${turns.cacheReadTokens} + ${turns.cacheCreationTokens}), 0)::bigint`.mapWith(Number),
+        inputTokens:
+          sql<number>`coalesce(sum(${turns.inputTokens} + ${turns.cacheReadTokens} + ${turns.cacheCreationTokens}), 0)::bigint`.mapWith(
+            Number,
+          ),
         outputTokens: sql<number>`coalesce(sum(${turns.outputTokens}), 0)::bigint`.mapWith(Number),
         // 단가표가 DB에 있어서 레포별 비용도 같은 SUM으로 끝난다.
         costUsd: totalCostUsd,
@@ -36,17 +82,26 @@ export function usageRoutes(app: FastifyInstance) {
   //    사용이 다음 날로 넘어간다. AT TIME ZONE 'Asia/Seoul'로 먼저 바꾼 뒤 자른다.
   // 2) generate_series가 날짜 목록을 만들고 거기에 집계를 LEFT JOIN 한다. GROUP BY만
   //    쓰면 사용 없는 날이 행 자체가 없어서 차트에 구멍이 생긴다.
-  app.get('/usage/daily', async (req) => {
-    const { days: raw } = req.query as { days?: string }
-    const days = Math.min(Math.max(Number(raw) || 30, 1), 365)
+  app.get(
+    '/usage/daily',
+    {
+      schema: {
+        querystring: Type.Object({
+          days: Type.Optional(Type.Integer({ minimum: 1, maximum: 365, default: 30 })),
+        }),
+        response: { 200: Type.Array(DailyUsage) },
+      },
+    },
+    async (req) => {
+      const days = req.query.days ?? 30
 
-    const rows = await db.execute<{
-      day: string
-      sessions: number
-      turns: number
-      output_tokens: number
-      cost_usd: number | null
-    }>(sql`
+      const rows = await db.execute<{
+        day: string
+        sessions: number
+        turns: number
+        output_tokens: number
+        cost_usd: number | null
+      }>(sql`
       with days as (
         select generate_series(
           (now() at time zone 'Asia/Seoul')::date - ${days - 1}::int,
@@ -77,20 +132,21 @@ export function usageRoutes(app: FastifyInstance) {
       order by days.day
     `)
 
-    // db.execute는 드라이버가 준 그대로 돌려준다. bigint/numeric은 문자열이라 여기서 숫자로 바꾼다.
-    return rows.rows.map((r) => ({
-      day: r.day,
-      sessions: Number(r.sessions),
-      turns: Number(r.turns),
-      outputTokens: Number(r.output_tokens),
-      costUsd: Number(r.cost_usd),
-    }))
-  })
+      // db.execute는 드라이버가 준 그대로 돌려준다. bigint/numeric은 문자열이라 여기서 숫자로 바꾼다.
+      return rows.rows.map((r) => ({
+        day: r.day,
+        sessions: Number(r.sessions),
+        turns: Number(r.turns),
+        outputTokens: Number(r.output_tokens),
+        costUsd: Number(r.cost_usd),
+      }))
+    },
+  )
 
   // 게이트 준수. 게이트가 안내를 넣은(nudged) 뒤 같은 세션에서 1시간 안에 suah-judge가
   // 호출됐으면 준수로 본다. 상관 서브쿼리(EXISTS)로 이벤트마다 확인한다.
   // 이벤트 수가 적어(하루 수 건) 지금은 이 방식이 가장 읽기 쉽다.
-  app.get('/usage/gates', async () => {
+  app.get('/usage/gates', { schema: { response: { 200: GateUsage } } }, async () => {
     const complied = sql<boolean>`exists (
       select 1 from ${skillInvocations} si
       where si.session_id = ${gateEvents.sessionId}
@@ -124,7 +180,7 @@ export function usageRoutes(app: FastifyInstance) {
   })
 
   // 스킬별 호출 수와 마지막 사용 시각.
-  app.get('/usage/skills', async () => {
+  app.get('/usage/skills', { schema: { response: { 200: Type.Array(SkillUsage) } } }, async () => {
     return db
       .select({
         skill: skillInvocations.skill,

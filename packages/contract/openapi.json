@@ -78,16 +78,121 @@
       "get": {
         "responses": {
           "200": {
-            "description": "Default Response"
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "repo",
+                      "sessions",
+                      "turns",
+                      "inputTokens",
+                      "outputTokens",
+                      "costUsd",
+                      "lastSeenAt"
+                    ],
+                    "properties": {
+                      "repo": {
+                        "type": "string"
+                      },
+                      "sessions": {
+                        "type": "integer"
+                      },
+                      "turns": {
+                        "type": "integer"
+                      },
+                      "inputTokens": {
+                        "type": "integer"
+                      },
+                      "outputTokens": {
+                        "type": "integer"
+                      },
+                      "costUsd": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "lastSeenAt": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
     "/usage/daily": {
       "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "default": 30
+            },
+            "in": "query",
+            "name": "days",
+            "required": false
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Default Response"
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "day",
+                      "sessions",
+                      "turns",
+                      "outputTokens",
+                      "costUsd"
+                    ],
+                    "properties": {
+                      "day": {
+                        "type": "string",
+                        "description": "YYYY-MM-DD, Asia/Seoul"
+                      },
+                      "sessions": {
+                        "type": "integer"
+                      },
+                      "turns": {
+                        "type": "integer"
+                      },
+                      "outputTokens": {
+                        "type": "integer"
+                      },
+                      "costUsd": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -96,7 +201,98 @@
       "get": {
         "responses": {
           "200": {
-            "description": "Default Response"
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "nudged",
+                    "complied",
+                    "rate",
+                    "events"
+                  ],
+                  "properties": {
+                    "nudged": {
+                      "type": "integer"
+                    },
+                    "complied": {
+                      "type": "integer"
+                    },
+                    "rate": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "0..1, nudged가 0이면 null"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "sessionId",
+                          "repo",
+                          "ts",
+                          "triggerSkill",
+                          "outcome",
+                          "complied"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "sessionId": {
+                            "type": "string"
+                          },
+                          "repo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ts": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "triggerSkill": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "nudged"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "throttled"
+                                ]
+                              }
+                            ]
+                          },
+                          "complied": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -105,16 +301,129 @@
       "get": {
         "responses": {
           "200": {
-            "description": "Default Response"
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "skill",
+                      "invocations",
+                      "lastUsedAt"
+                    ],
+                    "properties": {
+                      "skill": {
+                        "type": "string"
+                      },
+                      "invocations": {
+                        "type": "integer"
+                      },
+                      "lastUsedAt": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
     "/sessions": {
       "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "repo",
+            "required": false
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Default Response"
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "repo",
+                      "gitBranch",
+                      "startedAt",
+                      "lastSeenAt",
+                      "turns",
+                      "models",
+                      "outputTokens",
+                      "costUsd"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "repo": {
+                        "type": "string"
+                      },
+                      "gitBranch": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "startedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "lastSeenAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "turns": {
+                        "type": "integer"
+                      },
+                      "models": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "outputTokens": {
+                        "type": "integer"
+                      },
+                      "costUsd": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -133,7 +442,150 @@
         ],
         "responses": {
           "200": {
-            "description": "Default Response"
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "session",
+                    "turns",
+                    "totalCostUsd"
+                  ],
+                  "properties": {
+                    "session": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "cwd",
+                        "repo",
+                        "gitBranch",
+                        "cliVersion",
+                        "startedAt",
+                        "lastSeenAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "cwd": {
+                          "type": "string"
+                        },
+                        "repo": {
+                          "type": "string"
+                        },
+                        "gitBranch": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cliVersion": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "startedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "lastSeenAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    "turns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ts",
+                          "model",
+                          "inputTokens",
+                          "cacheReadTokens",
+                          "cacheCreationTokens",
+                          "outputTokens",
+                          "costUsd"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "ts": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "model": {
+                            "type": "string"
+                          },
+                          "inputTokens": {
+                            "type": "integer"
+                          },
+                          "cacheReadTokens": {
+                            "type": "integer"
+                          },
+                          "cacheCreationTokens": {
+                            "type": "integer"
+                          },
+                          "outputTokens": {
+                            "type": "integer"
+                          },
+                          "costUsd": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "totalCostUsd": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

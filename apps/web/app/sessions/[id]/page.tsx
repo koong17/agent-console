@@ -1,33 +1,16 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Nav } from '../../nav'
-import { SERVER_URL } from '../../server'
+import { api } from '../../server'
 import { fmtNum, fmtTime, fmtUsd } from '../../format'
-
-type Turn = {
-  id: string
-  ts: string
-  model: string
-  inputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
-  outputTokens: number
-  costUsd: number | null
-}
-
-type Detail = {
-  session: { id: string; repo: string; cwd: string; gitBranch: string | null; startedAt: string; lastSeenAt: string }
-  turns: Turn[]
-  totalCostUsd: number | null
-}
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  // 404는 에러가 아니라 정상 응답의 하나라 fetchJson(throw) 대신 직접 처리한다.
-  const res = await fetch(`${SERVER_URL}/sessions/${id}`, { cache: 'no-store' })
-  if (res.status === 404) notFound()
-  if (!res.ok) throw new Error(`/sessions/${id} 응답 실패: ${res.status}`)
-  const { session, turns, totalCostUsd } = (await res.json()) as Detail
+  // 404는 계약에 있는 정상 응답이다. error 쪽 타입이 { error: string } 으로 잡힌다.
+  const { data, error, response } = await api.GET('/sessions/{id}', { params: { path: { id } } })
+  if (response.status === 404) notFound()
+  if (error || !data) throw new Error(`/sessions/${id} 응답 실패: ${response.status}`)
+  const { session, turns, totalCostUsd } = data
 
   // 막대 길이 기준. 세션 안에서 가장 비싼 응답을 100%로 둔다.
   const maxCost = Math.max(0, ...turns.map((t) => t.costUsd ?? 0))
@@ -73,7 +56,10 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
                 <td className="num">{fmtUsd(t.costUsd)}</td>
                 <td className="bar-cell">
                   {/* 폭은 데이터에 따라 바뀌므로 인라인. DESIGN.md 7절의 유일한 예외. */}
-                  <div className="bar" style={{ width: maxCost ? `${((t.costUsd ?? 0) / maxCost) * 100}%` : 0 }} />
+                  <div
+                    className="bar"
+                    style={{ width: maxCost ? `${((t.costUsd ?? 0) / maxCost) * 100}%` : 0 }}
+                  />
                 </td>
               </tr>
             ))}

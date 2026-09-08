@@ -1,12 +1,7 @@
 import { fmtUsd } from '../format'
+import type { ApiData } from '../server'
 
-export type DailyUsage = {
-  day: string
-  sessions: number
-  turns: number
-  outputTokens: number
-  costUsd: number
-}
+export type DailyUsage = ApiData<'/usage/daily'>[number]
 
 // 서버 컴포넌트. 상호작용 없음. hover 툴팁은 title 속성으로 브라우저에 맡긴다.
 export function DailyChart({ days }: { days: DailyUsage[] }) {
