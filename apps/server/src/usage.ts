@@ -1,7 +1,7 @@
 import { Type } from 'typebox'
 import type { App } from './app.js'
 import { DateTime, Nullable } from './schemas.js'
-import { count, desc, eq, max, sql } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, max, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
 import { sessions, turns, skillInvocations, modelPrices, gateEvents } from './db/schema.js'
 import { totalCostUsd } from './cost.js'
@@ -53,8 +53,24 @@ const GateUsage = Type.Object({
   nudged: Type.Integer(),
   complied: Type.Integer(),
   rate: Nullable(Type.Number({ description: '0..1, nudged가 0이면 null' })),
+  // 게이트 대상 스킬을 사용자가 "/이름"으로 직접 입력한 횟수. 이 경로는 PreToolUse 훅이 안 울려
+  // 게이트를 거치지 않는다. 준수율 분모에 없으므로 따로 보여야 정직하다.
+  bypassed: Type.Integer(),
   events: Type.Array(GateEvent),
 })
+
+// suah-judge-gate.sh 의 case 목록과 같아야 한다. 훅이 바뀌면 여기도 바꾼다.
+const GATE_TRIGGER_SKILLS = [
+  'feature-start',
+  'feature-workflow',
+  'feature-spec',
+  'feature-plan',
+  'feature-implement',
+  'code-review',
+  'review',
+  'code-reviewer',
+  'product-design',
+]
 
 const SkillWeekly = Type.Object({
   weeks: Type.Array(Type.String({ description: '주 시작 월요일, YYYY-MM-DD, Asia/Seoul' })),
@@ -204,6 +220,13 @@ export function usageRoutes(app: App) {
       .orderBy(desc(gateEvents.ts))
       .limit(100)
 
+    const [bypassRow] = await db
+      .select({ bypassed: count() })
+      .from(skillInvocations)
+      .where(
+        and(eq(skillInvocations.source, 'command'), inArray(skillInvocations.skill, GATE_TRIGGER_SKILLS)),
+      )
+
     const nudged = events.filter((e) => e.outcome === 'nudged')
     const compliedCount = nudged.filter((e) => e.complied).length
     return {
@@ -211,6 +234,7 @@ export function usageRoutes(app: App) {
       complied: compliedCount,
       // 분모 0이면 null. 0%로 보이면 "전부 어겼다"로 읽힌다.
       rate: nudged.length ? compliedCount / nudged.length : null,
+      bypassed: bypassRow?.bypassed ?? 0,
       events,
     }
   })

@@ -110,6 +110,10 @@ export default async function UsagePage() {
               <strong>{gates.rate === null ? '-' : `${Math.round(gates.rate * 100)}%`}</strong> · 안내{' '}
               <strong>{gates.nudged}</strong>회 중 <strong>{gates.complied}</strong>회 1시간 안에 suah-judge
               호출
+              <br />
+              게이트 우회{' '}
+              <strong className={gates.bypassed > 0 ? 'status-warning' : undefined}>{gates.bypassed}</strong>
+              회 · 대상 스킬을 사용자가 /명령으로 직접 입력하면 훅이 울리지 않아요. 준수율에 안 잡힙니다.
             </p>
             <div className="table-wrap">
               <table>

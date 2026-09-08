@@ -210,6 +210,7 @@
                     "nudged",
                     "complied",
                     "rate",
+                    "bypassed",
                     "events"
                   ],
                   "properties": {
@@ -229,6 +230,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "bypassed": {
+                      "type": "integer"
                     },
                     "events": {
                       "type": "array",
@@ -606,6 +610,142 @@
                   "properties": {
                     "error": {
                       "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "thresholds",
+                    "rules"
+                  ],
+                  "properties": {
+                    "thresholds": {
+                      "type": "object",
+                      "required": [
+                        "minEvents",
+                        "deadMultiplier",
+                        "quietMultiplier",
+                        "deadFloorDays"
+                      ],
+                      "properties": {
+                        "minEvents": {
+                          "type": "integer"
+                        },
+                        "deadMultiplier": {
+                          "type": "number"
+                        },
+                        "quietMultiplier": {
+                          "type": "number"
+                        },
+                        "deadFloorDays": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "kind",
+                          "status",
+                          "total",
+                          "firstAt",
+                          "lastAt",
+                          "silenceDays",
+                          "medianGapDays"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "description": "스킬 이름, 또는 \"gate:<trigger>\""
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "skill"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "gate"
+                                ]
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "dead"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "quiet"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "ok"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "insufficient"
+                                ]
+                              }
+                            ]
+                          },
+                          "total": {
+                            "type": "integer"
+                          },
+                          "firstAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "lastAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "silenceDays": {
+                            "type": "number"
+                          },
+                          "medianGapDays": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "description": "호출 2회 미만이면 null"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   }
                 }
