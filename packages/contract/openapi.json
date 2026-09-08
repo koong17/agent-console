@@ -755,6 +755,161 @@
         }
       }
     },
+    "/harness/brain": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "dir",
+                    "docs",
+                    "staleDays",
+                    "stale",
+                    "inbox",
+                    "cadence"
+                  ],
+                  "properties": {
+                    "dir": {
+                      "type": "string"
+                    },
+                    "docs": {
+                      "type": "object",
+                      "required": [
+                        "total",
+                        "active",
+                        "draft",
+                        "superseded",
+                        "other"
+                      ],
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "description": "frontmatter가 있는 문서 수"
+                        },
+                        "active": {
+                          "type": "integer"
+                        },
+                        "draft": {
+                          "type": "integer"
+                        },
+                        "superseded": {
+                          "type": "integer"
+                        },
+                        "other": {
+                          "type": "integer",
+                          "description": "status 값이 셋 중 어느 것도 아닌 문서"
+                        }
+                      }
+                    },
+                    "staleDays": {
+                      "type": "integer"
+                    },
+                    "stale": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "path",
+                          "kind",
+                          "updated",
+                          "ageDays"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "updated": {
+                            "type": "string",
+                            "description": "frontmatter의 updated, YYYY-MM-DD"
+                          },
+                          "ageDays": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "description": "active 인데 updated 가 60일 넘은 문서, 오래된 순"
+                    },
+                    "inbox": {
+                      "type": "object",
+                      "required": [
+                        "items",
+                        "undated",
+                        "oldestAgeDays"
+                      ],
+                      "properties": {
+                        "items": {
+                          "type": "integer"
+                        },
+                        "undated": {
+                          "type": "integer",
+                          "description": "날짜 접두어가 없어 나이를 모르는 항목"
+                        },
+                        "oldestAgeDays": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "cadence": {
+                      "type": "object",
+                      "required": [
+                        "weeks",
+                        "julyBaselinePerWeek",
+                        "last4WeeksPerWeek"
+                      ],
+                      "properties": {
+                        "weeks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "week",
+                              "commits"
+                            ],
+                            "properties": {
+                              "week": {
+                                "type": "string",
+                                "description": "ISO 주, 예 2026-W36"
+                              },
+                              "commits": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "julyBaselinePerWeek": {
+                          "type": "number"
+                        },
+                        "last4WeeksPerWeek": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {

@@ -408,6 +408,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/harness/brain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            dir: string;
+                            docs: {
+                                /** @description frontmatter가 있는 문서 수 */
+                                total: number;
+                                active: number;
+                                draft: number;
+                                superseded: number;
+                                /** @description status 값이 셋 중 어느 것도 아닌 문서 */
+                                other: number;
+                            };
+                            staleDays: number;
+                            /** @description active 인데 updated 가 60일 넘은 문서, 오래된 순 */
+                            stale: {
+                                id: string;
+                                path: string;
+                                kind: string;
+                                /** @description frontmatter의 updated, YYYY-MM-DD */
+                                updated: string;
+                                ageDays: number;
+                            }[];
+                            inbox: {
+                                items: number;
+                                /** @description 날짜 접두어가 없어 나이를 모르는 항목 */
+                                undated: number;
+                                oldestAgeDays: number | null;
+                            };
+                            cadence: {
+                                weeks: {
+                                    /** @description ISO 주, 예 2026-W36 */
+                                    week: string;
+                                    commits: number;
+                                }[];
+                                julyBaselinePerWeek: number;
+                                last4WeeksPerWeek: number;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest/status": {
         parameters: {
             query?: never;
