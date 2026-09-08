@@ -1,6 +1,10 @@
 import { Type } from 'typebox'
+import { desc, eq } from 'drizzle-orm'
 import type { App } from '../app.js'
-import { ingestAll, type IngestSummary } from './index.js'
+import { db } from '../db/index.js'
+import { ingestRuns } from '../db/schema.js'
+import { DateTime, Nullable } from '../schemas.js'
+import { ingestAll } from './index.js'
 
 // ingestion을 서버 프로세스 안에서 주기적으로 돈다.
 //
@@ -10,60 +14,97 @@ import { ingestAll, type IngestSummary } from './index.js'
 
 const INTERVAL_MS = 60 * 60 * 1000 // 1시간
 
-type RunState =
-  | { status: 'idle' }
-  | { status: 'running'; startedAt: string }
-  | { status: 'done'; finishedAt: string; summary: IngestSummary }
-  | { status: 'failed'; finishedAt: string; error: string }
+type Trigger = 'startup' | 'interval' | 'manual'
 
-// 프로세스 메모리에만 있다. 재시작하면 idle로 돌아간다.
-let state: RunState = { status: 'idle' }
-
-const Summary = Type.Object({
-  files: Type.Integer(),
-  turns: Type.Integer(),
-  skills: Type.Integer(),
-  gates: Type.Integer(),
-  durationMs: Type.Integer(),
+const IngestRun = Type.Object({
+  id: Type.Integer(),
+  trigger: Type.Union([Type.Literal('startup'), Type.Literal('interval'), Type.Literal('manual')]),
+  status: Type.Union([Type.Literal('running'), Type.Literal('done'), Type.Literal('failed')]),
+  startedAt: DateTime,
+  finishedAt: Nullable(DateTime),
+  files: Nullable(Type.Integer()),
+  turns: Nullable(Type.Integer()),
+  skills: Nullable(Type.Integer()),
+  gates: Nullable(Type.Integer()),
+  error: Nullable(Type.String()),
 })
 
-// RunState와 같은 모양을 스키마로도 적는다. 둘이 어긋나면 tsc가 핸들러 반환 타입에서 잡는다.
-const RunStateSchema = Type.Union([
-  Type.Object({ status: Type.Literal('idle') }),
-  Type.Object({ status: Type.Literal('running'), startedAt: Type.String() }),
-  Type.Object({ status: Type.Literal('done'), finishedAt: Type.String(), summary: Summary }),
-  Type.Object({ status: Type.Literal('failed'), finishedAt: Type.String(), error: Type.String() }),
-])
+const IngestStatus = Type.Object({
+  // 지금 돌고 있는 실행. 없으면 null.
+  current: Nullable(IngestRun),
+  // 최근 실행 10개, 새것부터. current도 포함된다.
+  recent: Type.Array(IngestRun),
+})
 
-export function ingestScheduler(app: App) {
-  async function run(trigger: 'startup' | 'interval' | 'manual') {
-    // 이전 실행이 아직 안 끝났으면 겹쳐 돌리지 않는다. 같은 파일을 두 트랜잭션이
-    // 동시에 넣으면 한쪽이 키 충돌로 대기하거나 실패한다.
-    if (state.status === 'running') {
+type Options = {
+  // false면 라우트만 등록하고 타이머와 시작 시 실행은 붙이지 않는다.
+  // openapi-emit이 이 모드로 조립한다. 라우트는 항상 있어야 스펙에 /ingest/* 가 들어간다.
+  schedule?: boolean
+}
+
+export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
+  // 겹침 방지는 여전히 메모리 플래그다. 프로세스가 하나라 이걸로 충분하고,
+  // DB로 하려면 "running 행이 있나" 조회와 삽입 사이의 틈을 따로 막아야 한다.
+  let running = false
+
+  async function run(trigger: Trigger) {
+    if (running) {
       app.log.warn({ trigger }, 'ingest skipped: previous run still in progress')
-      return state
+      return
     }
-    state = { status: 'running', startedAt: new Date().toISOString() }
+    running = true
+
+    const [row] = await db
+      .insert(ingestRuns)
+      .values({ trigger, status: 'running', startedAt: new Date() })
+      .returning({ id: ingestRuns.id })
+    const id = row!.id
+
     try {
-      const summary = await ingestAll()
-      state = { status: 'done', finishedAt: new Date().toISOString(), summary }
-      app.log.info({ trigger, ...summary }, 'ingest done')
+      const s = await ingestAll()
+      await db
+        .update(ingestRuns)
+        .set({
+          status: 'done',
+          finishedAt: new Date(),
+          files: s.files,
+          turns: s.turns,
+          skills: s.skills,
+          gates: s.gates,
+        })
+        .where(eq(ingestRuns.id, id))
+      app.log.info({ trigger, ...s }, 'ingest done')
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
-      state = { status: 'failed', finishedAt: new Date().toISOString(), error }
+      await db
+        .update(ingestRuns)
+        .set({ status: 'failed', finishedAt: new Date(), error })
+        .where(eq(ingestRuns.id, id))
       app.log.error({ trigger, error }, 'ingest failed')
+    } finally {
+      running = false
     }
-    return state
   }
 
-  // 서버가 뜨면 한 번, 그 뒤 1시간마다.
-  // unref(): 이 타이머 때문에 프로세스가 종료를 못 하는 일이 없게 한다.
-  app.addHook('onReady', async () => {
-    void run('startup')
-    setInterval(() => void run('interval'), INTERVAL_MS).unref()
-  })
+  if (schedule)
+    app.addHook('onReady', async () => {
+      // 이전 프로세스가 실행 중에 죽었으면 그 줄이 running으로 영원히 남는다.
+      // 프로세스가 하나뿐이므로 시작 시점에 running인 줄은 전부 고아다. failed로 닫는다.
+      await db
+        .update(ingestRuns)
+        .set({ status: 'failed', finishedAt: new Date(), error: 'process restarted mid-run' })
+        .where(eq(ingestRuns.status, 'running'))
 
-  app.get('/ingest/status', { schema: { response: { 200: RunStateSchema } } }, async () => state)
+      // 서버가 뜨면 한 번, 그 뒤 1시간마다.
+      // unref(): 이 타이머 때문에 프로세스가 종료를 못 하는 일이 없게 한다.
+      void run('startup')
+      setInterval(() => void run('interval'), INTERVAL_MS).unref()
+    })
+
+  app.get('/ingest/status', { schema: { response: { 200: IngestStatus } } }, async () => {
+    const recent = await db.select().from(ingestRuns).orderBy(desc(ingestRuns.id)).limit(10)
+    return { current: recent.find((r) => r.status === 'running') ?? null, recent }
+  })
 
   // 수동 트리거. 기다리지 않고 바로 응답한다. 결과는 /ingest/status로 확인.
   // 기다리면 요청 하나가 몇 초를 점유하고, 그 시간이 /traces에 ingestion 비용으로 잡혀

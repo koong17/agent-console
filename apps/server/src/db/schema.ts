@@ -125,3 +125,22 @@ export const modelPrices = pgTable('model_prices', {
 })
 
 export type ModelPrice = typeof modelPrices.$inferSelect
+
+// ---------------------------------------------------------------------------
+// ingestion 실행 기록. 스케줄러 상태가 메모리에만 있으면 재시작 때 "마지막 성공이 언제였나"가
+// 사라진다. 실행 하나당 한 줄. 시작할 때 running으로 넣고 끝나면 같은 줄을 갱신한다.
+// ---------------------------------------------------------------------------
+export const ingestRuns = pgTable('ingest_runs', {
+  id: serial('id').primaryKey(),
+  trigger: text('trigger', { enum: ['startup', 'interval', 'manual'] }).notNull(),
+  status: text('status', { enum: ['running', 'done', 'failed'] }).notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  files: integer('files'),
+  turns: integer('turns'),
+  skills: integer('skills'),
+  gates: integer('gates'),
+  error: text('error'),
+})
+
+export type IngestRun = typeof ingestRuns.$inferSelect

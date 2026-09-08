@@ -9,7 +9,7 @@ import { ingestScheduler } from './ingest/scheduler.js'
 // 앱 조립과 listen을 분리한다. listen 없이 조립만 하면 OpenAPI 스펙을 파일로
 // 뽑거나(openapi-emit.ts) 테스트에서 inject로 요청을 넣을 수 있다.
 type BuildOptions = {
-  // 스펙만 뽑을 때(openapi-emit)는 ingestion 스케줄러를 붙이지 않는다.
+  // 스펙만 뽑을 때(openapi-emit)는 ingestion 타이머를 붙이지 않는다. 라우트는 항상 등록된다.
   ingest?: boolean
 }
 
@@ -29,7 +29,7 @@ export async function buildApp({ ingest = true }: BuildOptions = {}) {
   traceRoutes(app)
   usageRoutes(app)
   sessionRoutes(app)
-  if (ingest) ingestScheduler(app)
+  ingestScheduler(app, { schedule: ingest })
 
   // 스펙 자체도 엔드포인트로. 브라우저에서 바로 확인할 수 있다.
   app.get('/openapi.json', { schema: { hide: true } }, async () => app.swagger())
