@@ -178,6 +178,7 @@ Vercel 마케팅 사이트는 성공 색을 blue로 겸용한다. 우리는 상�
 | `.table-wrap` | `<table>`을 감싸는 div | 좁을 때 가로 스크롤 |
 | `.num` | `<th>`, `<td>` | 숫자 열: 우측 정렬, Mono, tabular-nums |
 | `tr.is-error` | `<tr>` | 강조 행. 텍스트 전체 `--error` |
+| `td.wrap` | 문장이 들어가는 `<td>` | nowrap 해제, 최대 폭 480, 세로 패딩 8. 질문처럼 문장인 열에만. 짧은 라벨 열은 그대로 nowrap |
 | `.status-warning` | 셀 안 텍스트 | 경고 한 단계 아래 신호(quiet 등). `--warning-deep` |
 | `.cell-zero` | 행렬 표 `<td>` | 0인 칸의 `·`. `--faint` |
 | `.bar-cell` | `<td>` | 막대가 들어가는 셀, 폭 160 |

@@ -178,6 +178,14 @@ th {
   font-weight: 400;
   line-height: 16px;
 }
+/* 문장이 들어가는 셀(질문, 선택지). 기본 nowrap을 풀어 줄바꿈을 허용한다.
+   행 높이 36px은 최소값이라 늘어난다. 긴 문장을 nowrap으로 두면 표 전체가 가로 스크롤에 갇힌다. */
+td.wrap {
+  white-space: normal;
+  max-width: 480px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
 tbody tr:hover {
   background: var(--hover);
 }
