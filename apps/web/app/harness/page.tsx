@@ -1,5 +1,5 @@
 import { Nav } from '../nav'
-import { api, unwrap, type ApiData } from '../server'
+import { api, unwrapAsync, type ApiData } from '../server'
 import { fmtDay } from '../format'
 import { ErrorState } from '../error-state'
 
@@ -22,9 +22,10 @@ export default async function HarnessPage() {
   let report: Report
   let brain: Brain
   try {
-    const [r, b] = await Promise.all([api.GET('/harness/rules'), api.GET('/harness/brain')])
-    report = unwrap(r)
-    brain = unwrap(b)
+    ;[report, brain] = await Promise.all([
+      unwrapAsync(api.GET('/harness/rules')),
+      unwrapAsync(api.GET('/harness/brain')),
+    ])
   } catch (err) {
     return <ErrorState title="harness" error={err} />
   }

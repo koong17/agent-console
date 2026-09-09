@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
-import { api, unwrap, type ApiData } from '../server'
+import { api, unwrapAsync, type ApiData } from '../server'
 import { fmtMinute } from '../format'
 import { ErrorState } from '../error-state'
 
@@ -14,7 +14,7 @@ const stripMarker = (label: string | null) =>
 export default async function DecisionsPage() {
   let report: Report
   try {
-    report = unwrap(await api.GET('/decisions'))
+    report = await unwrapAsync(api.GET('/decisions'))
   } catch (err) {
     return <ErrorState title="decisions" error={err} />
   }

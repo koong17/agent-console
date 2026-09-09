@@ -1,6 +1,6 @@
 import { AutoRefresh } from './auto-refresh'
 import { Nav } from './nav'
-import { api, unwrap, type ApiData } from './server'
+import { api, unwrapAsync, type ApiData } from './server'
 import { fmtTime } from './format'
 import { IngestStatus } from './ingest-status'
 import { ErrorState } from './error-state'
@@ -15,12 +15,10 @@ export default async function Page() {
   let traces: ApiData<'/traces'>
   let ingest: ApiData<'/ingest/status'>
   try {
-    const [t, i] = await Promise.all([
-      api.GET('/traces', { params: { query: { limit: 50 } } }),
-      api.GET('/ingest/status'),
+    ;[traces, ingest] = await Promise.all([
+      unwrapAsync(api.GET('/traces', { params: { query: { limit: 50 } } })),
+      unwrapAsync(api.GET('/ingest/status')),
     ])
-    traces = unwrap(t)
-    ingest = unwrap(i)
   } catch (err) {
     // 서버나 DB가 죽어 있으면 여기로 온다. fetch 자체가 실패(ECONNREFUSED)해도 잡힌다.
     return <ErrorState title="traces" error={err} />

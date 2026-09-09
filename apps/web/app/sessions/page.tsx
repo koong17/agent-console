@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
-import { api, unwrap, type ApiData } from '../server'
+import { api, unwrapAsync, type ApiData } from '../server'
 import { fmtDay, fmtNum, fmtUsd } from '../format'
 import { ErrorState } from '../error-state'
 
@@ -10,7 +10,7 @@ export default async function SessionsPage({ searchParams }: { searchParams: Pro
   // repo가 undefined면 openapi-fetch가 쿼리스트링을 아예 붙이지 않는다. 인코딩도 맡긴다.
   let list: ApiData<'/sessions'>
   try {
-    list = unwrap(await api.GET('/sessions', { params: { query: { repo } } }))
+    list = await unwrapAsync(api.GET('/sessions', { params: { query: { repo } } }))
   } catch (err) {
     return <ErrorState title="sessions" error={err} />
   }

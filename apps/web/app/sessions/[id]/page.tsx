@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Nav } from '../../nav'
-import { api, unwrap, type ApiData } from '../../server'
+import { api, callApi, unwrap, type ApiData } from '../../server'
 import { fmtMinute, fmtNum, fmtTime, fmtUsd } from '../../format'
 import { ErrorState } from '../../error-state'
 
@@ -19,7 +19,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   // 404는 계약에 있는 정상 응답이다. error 쪽 타입이 { error: string } 으로 잡힌다.
   let data: ApiData<'/sessions/{id}'>
   try {
-    const res = await api.GET('/sessions/{id}', { params: { path: { id } } })
+    const res = await callApi(api.GET('/sessions/{id}', { params: { path: { id } } }))
     if (res.response.status === 404) notFound()
     data = unwrap(res)
   } catch (err) {

@@ -1,28 +1,23 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
-import { api, unwrap, type ApiData } from '../server'
+import { api, unwrapAsync, type ApiData } from '../server'
 import { fmtDay, fmtMinute, fmtNum, fmtUsd } from '../format'
 import { DailyChart } from './daily-chart'
 import { ErrorState } from '../error-state'
 
 export default async function UsagePage() {
-  // 두 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
   // 네 요청은 서로 독립이라 동시에 보낸다. 순서대로 await 하면 대기 시간이 합쳐진다.
   let repos: ApiData<'/usage/repos'>
   let skills: ApiData<'/usage/skills/weekly'>
   let daily: ApiData<'/usage/daily'>
   let gates: ApiData<'/usage/gates'>
   try {
-    const [r, s, d, g] = await Promise.all([
-      api.GET('/usage/repos'),
-      api.GET('/usage/skills/weekly', { params: { query: { weeks: 8 } } }),
-      api.GET('/usage/daily', { params: { query: { days: 30 } } }),
-      api.GET('/usage/gates'),
+    ;[repos, skills, daily, gates] = await Promise.all([
+      unwrapAsync(api.GET('/usage/repos')),
+      unwrapAsync(api.GET('/usage/skills/weekly', { params: { query: { weeks: 8 } } })),
+      unwrapAsync(api.GET('/usage/daily', { params: { query: { days: 30 } } })),
+      unwrapAsync(api.GET('/usage/gates')),
     ])
-    repos = unwrap(r)
-    skills = unwrap(s)
-    daily = unwrap(d)
-    gates = unwrap(g)
   } catch (err) {
     return <ErrorState title="usage" error={err} />
   }
