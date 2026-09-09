@@ -479,6 +479,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description 기록된 결정 전체 */
+                            total: number;
+                            /** @description 추천이 있고 답도 읽힌 결정. 동의율의 분모 */
+                            judged: number;
+                            agreed: number;
+                            rate: number | null;
+                            items: {
+                                id: number;
+                                sessionId: string;
+                                repo: string | null;
+                                /** Format: date-time */
+                                ts: string;
+                                header: string;
+                                question: string;
+                                options: string[];
+                                recommended: string | null;
+                                chosen: string | null;
+                                agreed: boolean | null;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest/status": {
         parameters: {
             query?: never;
@@ -513,6 +568,7 @@ export interface paths {
                                 turns: number | null;
                                 skills: number | null;
                                 gates: number | null;
+                                decisions: number | null;
                                 error: string | null;
                             } | null;
                             recent: {
@@ -526,6 +582,7 @@ export interface paths {
                                 turns: number | null;
                                 skills: number | null;
                                 gates: number | null;
+                                decisions: number | null;
                                 error: string | null;
                             }[];
                         };

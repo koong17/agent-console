@@ -5,6 +5,7 @@ import {
   integer,
   numeric,
   boolean,
+  jsonb,
   timestamp,
   index,
   uniqueIndex,
@@ -123,10 +124,41 @@ export const gateEvents = pgTable(
   (t) => [uniqueIndex('gate_events_natural_key').on(t.sessionId, t.ts, t.triggerSkill)],
 )
 
+// 에이전트가 선택지를 내밀었을 때(AskUserQuestion) Suah가 무엇을 골랐나.
+// 출처는 harness-events.jsonl의 type=decision 줄(scripts/hooks/log-decision.sh가 남긴다).
+// transcript는 30일 뒤 지워지므로 이 표가 그 결정의 유일한 장기 기록이다.
+export const decisions = pgTable(
+  'decisions',
+  {
+    id: serial('id').primaryKey(),
+    sessionId: text('session_id').notNull(),
+    repo: text('repo'),
+    ts: timestamp('ts', { withTimezone: true }).notNull(),
+    // 도구 호출에서 질문 위에 붙는 짧은 칩 라벨("경로", "Approach"). 빈 문자열일 수 있다.
+    header: text('header').notNull().default(''),
+    question: text('question').notNull(),
+    // 선택지 라벨 배열. 열을 나누지 않고 jsonb 하나에 두는 이유: 개수가 2~4개로 가변이고,
+    // 화면은 항상 "전체를 한 줄로" 보여주기만 하며 라벨 단위로 조회하지 않는다.
+    options: jsonb('options').$type<string[]>().notNull(),
+    // 라벨에 "(Recommended)"/"(추천)"이 붙은 선택지. 에이전트가 추천을 안 했으면 null.
+    recommended: text('recommended'),
+    // 실제 고른 값. 다중 선택은 콤마로 이어진 문자열, "Other" 직접 입력은 선택지에 없는 문장.
+    chosen: text('chosen'),
+    // chosen == recommended. null은 "판정 불가"(추천이 없거나 답을 못 읽음)다. false("반대함")와 다르다.
+    agreed: boolean('agreed'),
+    // chosen을 못 읽었을 때만 응답 원문. 응답 형식이 바뀌었는지 나중에 추적하는 용도.
+    rawResponse: jsonb('raw_response'),
+  },
+  // 훅은 초 단위 ts를 남긴다. 한 번의 호출에 질문이 여럿이면 ts가 같으므로 question까지 키에 넣는다.
+  // 같은 세션이 같은 초에 같은 문장을 두 번 묻는 일은 없다.
+  (t) => [uniqueIndex('decisions_natural_key').on(t.sessionId, t.ts, t.question)],
+)
+
 export type Session = typeof sessions.$inferSelect
 export type Turn = typeof turns.$inferSelect
 export type SkillInvocation = typeof skillInvocations.$inferSelect
 export type GateEvent = typeof gateEvents.$inferSelect
+export type Decision = typeof decisions.$inferSelect
 
 // ---------------------------------------------------------------------------
 // 모델 단가 (USD / 100만 토큰). 출처: platform.claude.com/docs/en/about-claude/pricing
@@ -160,6 +192,7 @@ export const ingestRuns = pgTable('ingest_runs', {
   turns: integer('turns'),
   skills: integer('skills'),
   gates: integer('gates'),
+  decisions: integer('decisions'),
   error: text('error'),
 })
 

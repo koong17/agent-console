@@ -28,6 +28,7 @@ const IngestRun = Type.Object({
   turns: Nullable(Type.Integer()),
   skills: Nullable(Type.Integer()),
   gates: Nullable(Type.Integer()),
+  decisions: Nullable(Type.Integer()),
   error: Nullable(Type.String()),
 })
 
@@ -84,6 +85,7 @@ export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
           turns: s.turns,
           skills: s.skills,
           gates: s.gates,
+          decisions: s.decisions,
         })
         .where(eq(ingestRuns.id, id))
       app.log.info({ trigger, ...s }, 'ingest done')

@@ -910,6 +910,135 @@
         }
       }
     },
+    "/decisions": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "judged",
+                    "agreed",
+                    "rate",
+                    "items"
+                  ],
+                  "properties": {
+                    "total": {
+                      "type": "integer",
+                      "description": "기록된 결정 전체"
+                    },
+                    "judged": {
+                      "type": "integer",
+                      "description": "추천이 있고 답도 읽힌 결정. 동의율의 분모"
+                    },
+                    "agreed": {
+                      "type": "integer"
+                    },
+                    "rate": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "description": "agreed / judged. judged가 0이면 null"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "sessionId",
+                          "repo",
+                          "ts",
+                          "header",
+                          "question",
+                          "options",
+                          "recommended",
+                          "chosen",
+                          "agreed"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "sessionId": {
+                            "type": "string"
+                          },
+                          "repo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ts": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "header": {
+                            "type": "string"
+                          },
+                          "question": {
+                            "type": "string"
+                          },
+                          "options": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "recommended": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chosen": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "agreed": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {
@@ -938,6 +1067,7 @@
                             "turns",
                             "skills",
                             "gates",
+                            "decisions",
                             "error"
                           ],
                           "properties": {
@@ -1043,6 +1173,16 @@
                                 }
                               ]
                             },
+                            "decisions": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "error": {
                               "anyOf": [
                                 {
@@ -1074,6 +1214,7 @@
                           "turns",
                           "skills",
                           "gates",
+                          "decisions",
                           "error"
                         ],
                         "properties": {
@@ -1170,6 +1311,16 @@
                             ]
                           },
                           "gates": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decisions": {
                             "anyOf": [
                               {
                                 "type": "integer"
