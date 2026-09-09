@@ -8,6 +8,7 @@
     "contract": "pnpm --filter server openapi:emit && pnpm --filter @agent-console/contract generate",
     "format": "prettier --write \"apps/*/src/**/*.ts\" \"apps/web/app/**/*.{ts,tsx}\"",
     "contract:check": "sh scripts/contract-check.sh",
+    "design:check": "sh scripts/design-check.sh",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {

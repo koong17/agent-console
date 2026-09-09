@@ -1,15 +1,21 @@
 #!/bin/sh
-# 서버 라우트를 바꾸고 계약(openapi.json, openapi.d.ts)을 다시 안 만들면 커밋을 막는다.
-# 서버 코드나 contract 패키지가 스테이징된 경우에만 돈다. 그 외 커밋은 비용 0.
+# 스테이징된 파일에 따라 검사를 고른다. 해당 없는 커밋은 비용 0.
+#   - 서버 라우트를 바꾸고 계약(openapi.json, openapi.d.ts)을 다시 안 만들면 막는다.
+#   - 웹 컴포넌트에 hex 색이나 막대 밖 인라인 style 이 들어가면 막는다 (DESIGN.md 7절).
 #
 # 설치: pnpm install 이 prepare 스크립트로 core.hooksPath 를 이 폴더로 잡는다.
 # 건너뛰기(비상시): git commit --no-verify
 
 set -e
 
-if ! git diff --cached --name-only | grep -qE '^(apps/server/src/|packages/contract/)'; then
-  exit 0
+staged=$(git diff --cached --name-only)
+
+if echo "$staged" | grep -qE '^(apps/server/src/|packages/contract/)'; then
+  echo "pre-commit: 계약 신선도 확인 (pnpm contract:check)"
+  pnpm -s contract:check
 fi
 
-echo "pre-commit: 계약 신선도 확인 (pnpm contract:check)"
-pnpm -s contract:check
+if echo "$staged" | grep -qE '^apps/web/app/.*\.tsx$'; then
+  echo "pre-commit: 디자인 규칙 확인 (pnpm design:check)"
+  pnpm -s design:check
+fi
