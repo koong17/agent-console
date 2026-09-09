@@ -60,7 +60,7 @@ const BrainReport = Type.Object({
   }),
   cadence: Type.Object({
     weeks: Type.Array(WeekCount),
-    // 2026년 7월(W27~W31) 주당 평균 문서 커밋. 브레인 문서가 "7월 주간 기준선"이라 부르는 값.
+    // 2026년 7월(W27~W31) 주당 평균 승격 커밋. 브레인 문서가 "7월 주간 기준선"이라 부르는 값.
     julyBaselinePerWeek: Type.Number(),
     last4WeeksPerWeek: Type.Number(),
   }),
@@ -95,9 +95,17 @@ function isoWeek(d: Date): string {
 
 const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
 
+// 승격(promotion) = inbox 에 모인 것을 distilled 레이어로 올리는 것.
+// 그래서 identity/knowledge/workflows/decisions 를 건드린 커밋만 센다.
+// 뺀 것과 이유:
+//   - inbox.md: 수집이지 승격이 아니다.
+//   - projects/: 프로젝트 진행 기록(Status 로그)이다. 규칙 승격이 아닌데 예전엔 여기 커밋이
+//     주별 수의 최대 버킷이라 cadence 를 두 배 가까이 부풀렸다(2026-09-09 확인).
+//   - evals/, .agent/, AGENTS.md, README, scripts/: 테스트·스킬 정의·메타·도구. 규칙 승격이 아니다.
+const PROMOTION_DIRS = ['identity/', 'knowledge/', 'workflows/', 'decisions/']
+
 async function weeklyDocCommits(since: string, until?: string): Promise<Map<string, number>> {
-  // inbox.md 변경은 "승격"이 아니라 "수집"이라 뺀다. 문서 본문이 바뀐 커밋만 센다.
-  const args = ['log', `--since=${since}`, '--format=%ad', '--date=format:%G-W%V', '--', '*.md', ':!inbox.md']
+  const args = ['log', `--since=${since}`, '--format=%ad', '--date=format:%G-W%V', '--', ...PROMOTION_DIRS]
   if (until) args.splice(2, 0, `--until=${until}`)
   const { stdout } = await execFileAsync('git', args, { cwd: BRAIN_DIR })
   const counts = new Map<string, number>()

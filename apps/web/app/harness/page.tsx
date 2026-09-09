@@ -53,8 +53,9 @@ export default async function HarnessPage() {
           오래된 것 <strong>{brain.inbox.oldestAgeDays ?? '-'}</strong>일
           {brain.inbox.undated > 0 && <> (날짜 없음 {brain.inbox.undated})</>}
           <br />
-          문서 커밋 주당 <strong>{brain.cadence.last4WeeksPerWeek.toFixed(1)}</strong> (최근 4주) vs{' '}
+          승격 커밋 주당 <strong>{brain.cadence.last4WeeksPerWeek.toFixed(1)}</strong> (최근 4주) vs{' '}
           <strong>{brain.cadence.julyBaselinePerWeek.toFixed(1)}</strong> (7월 기준선) ·{' '}
+          <span className="cell-zero">identity·knowledge·workflows·decisions 만</span> ·{' '}
           <span className="mono">{brain.cadence.weeks.map((w) => w.commits).join(' ')}</span>
         </p>
         {brain.stale.length === 0 ? (
