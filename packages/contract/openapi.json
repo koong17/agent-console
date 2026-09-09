@@ -211,6 +211,7 @@
                     "complied",
                     "rate",
                     "bypassed",
+                    "bypassedBefore",
                     "events"
                   ],
                   "properties": {
@@ -233,6 +234,10 @@
                     },
                     "bypassed": {
                       "type": "integer"
+                    },
+                    "bypassedBefore": {
+                      "type": "string",
+                      "format": "date-time"
                     },
                     "events": {
                       "type": "array",

@@ -113,7 +113,8 @@ export default async function UsagePage() {
               <br />
               게이트 우회{' '}
               <strong className={gates.bypassed > 0 ? 'status-warning' : undefined}>{gates.bypassed}</strong>
-              회 · 대상 스킬을 사용자가 /명령으로 직접 입력하면 훅이 울리지 않아요. 준수율에 안 잡힙니다.
+              회 · <span className="mono">{fmtDay(String(gates.bypassedBefore))}</span> 이전 /명령 직접 입력.
+              그때는 게이트가 안 잡던 진짜 우회예요. 이후부터는 명령 경로도 게이트가 커버해요.
             </p>
             <div className="table-wrap">
               <table>

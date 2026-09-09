@@ -1,7 +1,7 @@
 import { Type } from 'typebox'
 import type { App } from './app.js'
 import { DateTime, Nullable } from './schemas.js'
-import { and, count, desc, eq, inArray, max, sql } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, lt, max, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
 import { sessions, turns, skillInvocations, modelPrices, gateEvents } from './db/schema.js'
 import { totalCostUsd } from './cost.js'
@@ -53,13 +53,23 @@ const GateUsage = Type.Object({
   nudged: Type.Integer(),
   complied: Type.Integer(),
   rate: Nullable(Type.Number({ description: '0..1, nudged가 0이면 null' })),
-  // 게이트 대상 스킬을 사용자가 "/이름"으로 직접 입력한 횟수. 이 경로는 PreToolUse 훅이 안 울려
-  // 게이트를 거치지 않는다. 준수율 분모에 없으므로 따로 보여야 정직하다.
+  // 게이트 대상 스킬을 사용자가 "/이름"으로 직접 입력한 횟수 중, 명령 경로 게이트 설치(bypassedBefore)
+  // 이전의 것만. 그때는 PreToolUse 도 명령 경로도 안 잡던 진짜 우회였다. 설치 이후는 게이트가 커버한다.
   bypassed: Type.Integer(),
+  // bypassed 의 경계 시각. 화면이 "이 시각 전까지" 를 날짜로 보여줄 수 있게 함께 준다.
+  bypassedBefore: DateTime,
   events: Type.Array(GateEvent),
 })
 
-// suah-judge-gate.sh 의 case 목록과 같아야 한다. 훅이 바뀌면 여기도 바꾼다.
+// 사용자가 판단 스킬을 "/명령"으로 직접 입력하면 도구 호출이 없어 PreToolUse 게이트가 안 울린다.
+// 이 경로를 잡는 UserPromptExpansion 게이트(suah-judge-gate-command.sh)를 이 시각에 설치했다.
+// 그 전의 명령 경로 호출은 진짜로 게이트가 없던 "우회"고, 그 후는 게이트가 커버한다.
+// 그래서 bypassed 는 이 시각 이전의 명령 경로 호출만 센다. 이후 것을 함께 세면 커버된 호출을
+// 우회로 이중 계산하게 된다. gate_events 는 도구/명령 경로를 구분하지 않으므로(둘 다 type=gate),
+// 상관관계 매칭 대신 이 설치 시각을 경계로 쓴다.
+const COMMAND_GATE_INSTALLED_AT = new Date('2026-09-09T04:51:54Z')
+
+// suah-judge-gate.sh / suah-judge-gate-command.sh 의 case 목록과 같아야 한다. 훅이 바뀌면 여기도 바꾼다.
 const GATE_TRIGGER_SKILLS = [
   'feature-start',
   'feature-workflow',
@@ -220,11 +230,16 @@ export function usageRoutes(app: App) {
       .orderBy(desc(gateEvents.ts))
       .limit(100)
 
+    // 명령 경로 게이트 설치 전의 호출만 우회로 센다(위 상수 주석 참고).
     const [bypassRow] = await db
       .select({ bypassed: count() })
       .from(skillInvocations)
       .where(
-        and(eq(skillInvocations.source, 'command'), inArray(skillInvocations.skill, GATE_TRIGGER_SKILLS)),
+        and(
+          eq(skillInvocations.source, 'command'),
+          inArray(skillInvocations.skill, GATE_TRIGGER_SKILLS),
+          lt(skillInvocations.ts, COMMAND_GATE_INSTALLED_AT),
+        ),
       )
 
     const nudged = events.filter((e) => e.outcome === 'nudged')
@@ -235,6 +250,7 @@ export function usageRoutes(app: App) {
       // 분모 0이면 null. 0%로 보이면 "전부 어겼다"로 읽힌다.
       rate: nudged.length ? compliedCount / nudged.length : null,
       bypassed: bypassRow?.bypassed ?? 0,
+      bypassedBefore: COMMAND_GATE_INSTALLED_AT,
       events,
     }
   })

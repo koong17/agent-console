@@ -164,6 +164,8 @@ export interface paths {
                             complied: number;
                             rate: number | null;
                             bypassed: number;
+                            /** Format: date-time */
+                            bypassedBefore: string;
                             events: {
                                 id: number;
                                 sessionId: string;
