@@ -484,6 +484,7 @@
                   "required": [
                     "session",
                     "turns",
+                    "skills",
                     "totalCostUsd"
                   ],
                   "properties": {
@@ -582,6 +583,46 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ts",
+                          "skill",
+                          "source"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "ts": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "skill": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "tool"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "command"
+                                ]
                               }
                             ]
                           }

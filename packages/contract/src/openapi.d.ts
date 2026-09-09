@@ -330,6 +330,13 @@ export interface paths {
                                 outputTokens: number;
                                 costUsd: number | null;
                             }[];
+                            skills: {
+                                id: string;
+                                /** Format: date-time */
+                                ts: string;
+                                skill: string;
+                                source: "tool" | "command";
+                            }[];
                             totalCostUsd: number | null;
                         };
                     };

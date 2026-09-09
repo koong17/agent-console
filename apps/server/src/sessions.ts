@@ -3,7 +3,7 @@ import type { App } from './app.js'
 import { DateTime, Nullable } from './schemas.js'
 import { asc, count, desc, eq, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
-import { sessions, turns, modelPrices } from './db/schema.js'
+import { sessions, turns, modelPrices, skillInvocations } from './db/schema.js'
 import { turnCostUsd, totalCostUsd } from './cost.js'
 
 const sumInt = (col: unknown) => sql<number>`coalesce(sum(${col}), 0)::bigint`.mapWith(Number)
@@ -41,9 +41,20 @@ const TurnWithCost = Type.Object({
   costUsd: Nullable(Type.Number()),
 })
 
+// 이 세션에서 불린 스킬 하나. source: 'tool' = 모델이 Skill 도구로 호출,
+// 'command' = 사용자가 "/이름" 으로 직접 입력. 무엇이 언제 불렸는지가 세션의 줄거리다.
+const SkillMarker = Type.Object({
+  id: Type.String(),
+  ts: DateTime,
+  skill: Type.String(),
+  source: Type.Union([Type.Literal('tool'), Type.Literal('command')]),
+})
+
 const SessionDetail = Type.Object({
   session: Session,
   turns: Type.Array(TurnWithCost),
+  // 시간순. 세션에서 스킬을 안 썼으면 빈 배열.
+  skills: Type.Array(SkillMarker),
   totalCostUsd: Nullable(Type.Number()),
 })
 
@@ -114,11 +125,23 @@ export function sessionRoutes(app: App) {
         .where(eq(turns.sessionId, id))
         .orderBy(asc(turns.ts))
 
+      // 이 세션의 스킬 호출. turns 와 같은 시간축이라 화면에서 나란히 읽힌다.
+      const skills = await db
+        .select({
+          id: skillInvocations.id,
+          ts: skillInvocations.ts,
+          skill: skillInvocations.skill,
+          source: skillInvocations.source,
+        })
+        .from(skillInvocations)
+        .where(eq(skillInvocations.sessionId, id))
+        .orderBy(asc(skillInvocations.ts))
+
       const total = rows.reduce<number | null>(
         (acc, t) => (acc === null || t.costUsd === null ? null : acc + t.costUsd),
         0,
       )
-      return { session, turns: rows, totalCostUsd: total }
+      return { session, turns: rows, skills, totalCostUsd: total }
     },
   )
 }
