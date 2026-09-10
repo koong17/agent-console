@@ -4,7 +4,7 @@ import type { App } from '../app.js'
 import { db } from '../db/index.js'
 import { ingestRuns } from '../db/schema.js'
 import { DateTime, Nullable } from '../schemas.js'
-import { ingestAll } from './index.js'
+import { ingestAll, unexplained, unknownTypes } from './index.js'
 
 // ingestion을 서버 프로세스 안에서 주기적으로 돈다.
 //
@@ -18,6 +18,29 @@ const STALE_MS = 10 * 60 * 1000 // 10분
 
 type Trigger = 'startup' | 'interval' | 'manual'
 
+// DB에는 jsonb 한 덩어리지만 계약에서는 필드를 전부 못박는다.
+// 그래야 웹이 카운터 이름을 오타 없이 쓰고, 카운터가 바뀌면 contract:check 가 잡는다.
+const IngestStatsSchema = Type.Object({
+  transcripts: Type.Object({
+    lines: Type.Integer(),
+    badJson: Type.Integer(),
+    filesEmpty: Type.Integer(),
+    // 키가 데이터에서 나오는 유일한 필드. 타입 이름을 미리 못 박을 수 없어서 Record 다.
+    typeCounts: Type.Record(Type.String(), Type.Integer()),
+    unknownTypeLines: Type.Integer(),
+    assistantLines: Type.Integer(),
+    synthetic: Type.Integer(),
+    unusable: Type.Integer(),
+  }),
+  events: Type.Object({
+    lines: Type.Integer(),
+    badJson: Type.Integer(),
+    skillLines: Type.Integer(),
+    unknownType: Type.Integer(),
+    incomplete: Type.Integer(),
+  }),
+})
+
 const IngestRun = Type.Object({
   id: Type.Integer(),
   trigger: Type.Union([Type.Literal('startup'), Type.Literal('interval'), Type.Literal('manual')]),
@@ -29,6 +52,13 @@ const IngestRun = Type.Object({
   skills: Nullable(Type.Integer()),
   gates: Nullable(Type.Integer()),
   decisions: Nullable(Type.Integer()),
+  // 이 열이 생기기 전 실행(그리고 running/failed 행)은 null 이다.
+  stats: Nullable(IngestStatsSchema),
+  // stats 에서 계산한 값. 열이 아니라 응답에서 만든다.
+  // 웹에서 같은 덧셈을 다시 쓰면 "무엇이 비정상인가"의 정의가 두 곳으로 갈라진다.
+  unexplained: Nullable(Type.Integer()),
+  // 처음 보는 type 이름들. 비어 있으면 B형 고장은 아니라는 뜻.
+  unknownTypes: Type.Array(Type.String()),
   error: Nullable(Type.String()),
 })
 
@@ -86,9 +116,10 @@ export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
           skills: s.skills,
           gates: s.gates,
           decisions: s.decisions,
+          stats: s.stats,
         })
         .where(eq(ingestRuns.id, id))
-      app.log.info({ trigger, ...s }, 'ingest done')
+      app.log.info({ trigger, ...s, unexplained: unexplained(s.stats) }, 'ingest done')
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       await db
@@ -119,7 +150,12 @@ export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
   app.get('/ingest/status', { schema: { response: { 200: IngestStatus } } }, async () => {
     // 읽기 엔드포인트에서 쓰기를 하는 예외. 안 하면 실행 주기(1시간) 동안 화면이 "실행 중"으로 굳는다.
     await closeStaleRuns()
-    const recent = await db.select().from(ingestRuns).orderBy(desc(ingestRuns.id)).limit(10)
+    const rows = await db.select().from(ingestRuns).orderBy(desc(ingestRuns.id)).limit(10)
+    const recent = rows.map((r) => ({
+      ...r,
+      unexplained: r.stats ? unexplained(r.stats) : null,
+      unknownTypes: r.stats ? unknownTypes(r.stats) : [],
+    }))
     return { current: recent.find((r) => r.status === 'running') ?? null, recent }
   })
 

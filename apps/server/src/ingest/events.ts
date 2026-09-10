@@ -15,7 +15,7 @@ import { createInterface } from 'node:readline'
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import { db } from '../db/index.js'
-import { gateEvents, decisions } from '../db/schema.js'
+import { gateEvents, decisions, type EventStats } from '../db/schema.js'
 
 const EVENTS_PATH = join(homedir(), '.claude', 'harness-events.jsonl')
 
@@ -39,20 +39,35 @@ type EventLine = {
   raw_response?: unknown
 }
 
-export type EventsSummary = { gates: number; decisions: number }
+export type EventsSummary = { gates: number; decisions: number; stats: EventStats }
 
 export async function ingestEvents(): Promise<EventsSummary> {
   const gateRows: Array<typeof gateEvents.$inferInsert> = []
   const decisionRows: Array<typeof decisions.$inferInsert> = []
+  const stats: EventStats = { lines: 0, badJson: 0, skillLines: 0, unknownType: 0, incomplete: 0 }
 
   let rl
   try {
     rl = createInterface({ input: createReadStream(EVENTS_PATH), crlfDelay: Infinity })
     for await (const raw of rl) {
+      stats.lines++
       let e: EventLine
       try {
         e = JSON.parse(raw)
       } catch {
+        stats.badJson++
+        continue
+      }
+      // 설계상 안 넣는 줄. 예상된 탈락이라 먼저 걸러 incomplete 와 섞이지 않게 한다.
+      if (e.type === 'skill') {
+        stats.skillLines++
+        continue
+      }
+      // 모든 타입이 공통으로 쓰는 필드. 없으면 행을 만들 수 없다.
+      // 예전에는 이 검사가 없어서 ts 가 없는 줄이 Invalid Date 로 DB까지 내려가
+      // 실행 전체를 실패시켰다. 이제 그 줄 하나만 빼고 카운터에 남긴다.
+      if (!e.ts || !e.session_id) {
+        stats.incomplete++
         continue
       }
       const common = {
@@ -60,24 +75,30 @@ export async function ingestEvents(): Promise<EventsSummary> {
         repo: e.cwd ? basename(e.cwd) : null,
         ts: new Date(e.ts * 1000),
       }
-      if (e.type === 'gate' && e.skill && e.outcome) {
-        gateRows.push({ ...common, triggerSkill: e.skill, outcome: e.outcome })
-      } else if (e.type === 'decision' && e.question) {
-        decisionRows.push({
-          ...common,
-          header: e.header ?? '',
-          question: e.question,
-          options: e.options ?? [],
-          recommended: e.recommended ?? null,
-          chosen: e.chosen ?? null,
-          agreed: e.agreed ?? null,
-          rawResponse: e.raw_response ?? null,
-        })
+      if (e.type === 'gate') {
+        if (e.skill && e.outcome) gateRows.push({ ...common, triggerSkill: e.skill, outcome: e.outcome })
+        else stats.incomplete++
+      } else if (e.type === 'decision') {
+        if (e.question)
+          decisionRows.push({
+            ...common,
+            header: e.header ?? '',
+            question: e.question,
+            options: e.options ?? [],
+            recommended: e.recommended ?? null,
+            chosen: e.chosen ?? null,
+            agreed: e.agreed ?? null,
+            rawResponse: e.raw_response ?? null,
+          })
+        else stats.incomplete++
+      } else {
+        // 훅이 새 type 을 남기기 시작했는데 우리가 아직 안 읽고 있다는 뜻이다.
+        stats.unknownType++
       }
     }
   } catch (err) {
     // 파일이 아직 없으면(훅이 한 번도 안 울림) 넣을 게 없는 것이지 실패가 아니다.
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { gates: 0, decisions: 0 }
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { gates: 0, decisions: 0, stats }
     throw err
   }
 
@@ -90,7 +111,12 @@ export async function ingestEvents(): Promise<EventsSummary> {
   const decided =
     decisionRows.length === 0
       ? 0
-      : (await db.insert(decisions).values(decisionRows).onConflictDoNothing().returning({ id: decisions.id }))
-          .length
-  return { gates, decisions: decided }
+      : (
+          await db
+            .insert(decisions)
+            .values(decisionRows)
+            .onConflictDoNothing()
+            .returning({ id: decisions.id })
+        ).length
+  return { gates, decisions: decided, stats }
 }

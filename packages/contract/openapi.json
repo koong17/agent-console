@@ -1114,6 +1114,9 @@
                             "skills",
                             "gates",
                             "decisions",
+                            "stats",
+                            "unexplained",
+                            "unknownTypes",
                             "error"
                           ],
                           "properties": {
@@ -1229,6 +1232,107 @@
                                 }
                               ]
                             },
+                            "stats": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "transcripts",
+                                    "events"
+                                  ],
+                                  "properties": {
+                                    "transcripts": {
+                                      "type": "object",
+                                      "required": [
+                                        "lines",
+                                        "badJson",
+                                        "filesEmpty",
+                                        "typeCounts",
+                                        "unknownTypeLines",
+                                        "assistantLines",
+                                        "synthetic",
+                                        "unusable"
+                                      ],
+                                      "properties": {
+                                        "lines": {
+                                          "type": "integer"
+                                        },
+                                        "badJson": {
+                                          "type": "integer"
+                                        },
+                                        "filesEmpty": {
+                                          "type": "integer"
+                                        },
+                                        "typeCounts": {
+                                          "type": "object",
+                                          "additionalProperties": {
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "unknownTypeLines": {
+                                          "type": "integer"
+                                        },
+                                        "assistantLines": {
+                                          "type": "integer"
+                                        },
+                                        "synthetic": {
+                                          "type": "integer"
+                                        },
+                                        "unusable": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    },
+                                    "events": {
+                                      "type": "object",
+                                      "required": [
+                                        "lines",
+                                        "badJson",
+                                        "skillLines",
+                                        "unknownType",
+                                        "incomplete"
+                                      ],
+                                      "properties": {
+                                        "lines": {
+                                          "type": "integer"
+                                        },
+                                        "badJson": {
+                                          "type": "integer"
+                                        },
+                                        "skillLines": {
+                                          "type": "integer"
+                                        },
+                                        "unknownType": {
+                                          "type": "integer"
+                                        },
+                                        "incomplete": {
+                                          "type": "integer"
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "unexplained": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "unknownTypes": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
                             "error": {
                               "anyOf": [
                                 {
@@ -1261,6 +1365,9 @@
                           "skills",
                           "gates",
                           "decisions",
+                          "stats",
+                          "unexplained",
+                          "unknownTypes",
                           "error"
                         ],
                         "properties": {
@@ -1375,6 +1482,107 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "stats": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "transcripts",
+                                  "events"
+                                ],
+                                "properties": {
+                                  "transcripts": {
+                                    "type": "object",
+                                    "required": [
+                                      "lines",
+                                      "badJson",
+                                      "filesEmpty",
+                                      "typeCounts",
+                                      "unknownTypeLines",
+                                      "assistantLines",
+                                      "synthetic",
+                                      "unusable"
+                                    ],
+                                    "properties": {
+                                      "lines": {
+                                        "type": "integer"
+                                      },
+                                      "badJson": {
+                                        "type": "integer"
+                                      },
+                                      "filesEmpty": {
+                                        "type": "integer"
+                                      },
+                                      "typeCounts": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "unknownTypeLines": {
+                                        "type": "integer"
+                                      },
+                                      "assistantLines": {
+                                        "type": "integer"
+                                      },
+                                      "synthetic": {
+                                        "type": "integer"
+                                      },
+                                      "unusable": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  },
+                                  "events": {
+                                    "type": "object",
+                                    "required": [
+                                      "lines",
+                                      "badJson",
+                                      "skillLines",
+                                      "unknownType",
+                                      "incomplete"
+                                    ],
+                                    "properties": {
+                                      "lines": {
+                                        "type": "integer"
+                                      },
+                                      "badJson": {
+                                        "type": "integer"
+                                      },
+                                      "skillLines": {
+                                        "type": "integer"
+                                      },
+                                      "unknownType": {
+                                        "type": "integer"
+                                      },
+                                      "incomplete": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "unexplained": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "unknownTypes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           },
                           "error": {
                             "anyOf": [

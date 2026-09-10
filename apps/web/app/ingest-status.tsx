@@ -9,16 +9,31 @@ export function IngestStatus({ status }: { status: Status }) {
   if (!last) return <p className="summary">ingestion: 아직 실행 기록 없음</p>
 
   const when = fmtTime(String(last.finishedAt ?? last.startedAt))
+  // 삽입 개수만 보면 "0"이 정상인지 고장인지 모른다. 분모로 읽은 줄을 같이 보여준다.
+  const lines = last.stats ? last.stats.transcripts.lines + last.stats.events.lines : 0
   return (
     <p className={last.status === 'failed' ? 'state-error' : 'summary'}>
       ingestion: {status.current ? '실행 중 · ' : ''}
       마지막 {last.status === 'done' ? '성공' : '실패'} {when} ({last.trigger})
       {last.status === 'done' && (
         <>
-          {' · '}turns +<strong>{last.turns ?? 0}</strong> · gates +<strong>{last.gates ?? 0}</strong>
+          {' · '}읽은 줄 <strong>{lines.toLocaleString()}</strong> · turns +<strong>{last.turns ?? 0}</strong>{' '}
+          · gates +<strong>{last.gates ?? 0}</strong>
         </>
       )}
       {last.status === 'failed' && last.error && <> · {last.error}</>}
+      {/* "turns +0"이 조용한 시간인지 파서가 깨진 건지 구분하는 자리.
+          읽은 줄이 많은데 못 알아본 줄이 있으면 여기 뜬다. 0이면 아예 안 보여준다. */}
+      {last.unexplained ? (
+        <>
+          {' · '}
+          <span className="status-warning">
+            못 알아본 줄 <strong>{last.unexplained.toLocaleString()}</strong>
+            {/* 숫자만 보면 DB를 열어야 원인을 안다. 처음 보는 type 이 있으면 이름까지 여기 적는다. */}
+            {last.unknownTypes.length > 0 && <> · 처음 보는 type: {last.unknownTypes.join(', ')}</>}
+          </span>
+        </>
+      ) : null}
     </p>
   )
 }

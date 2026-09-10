@@ -578,6 +578,29 @@ export interface paths {
                                 skills: number | null;
                                 gates: number | null;
                                 decisions: number | null;
+                                stats: {
+                                    transcripts: {
+                                        lines: number;
+                                        badJson: number;
+                                        filesEmpty: number;
+                                        typeCounts: {
+                                            [key: string]: number;
+                                        };
+                                        unknownTypeLines: number;
+                                        assistantLines: number;
+                                        synthetic: number;
+                                        unusable: number;
+                                    };
+                                    events: {
+                                        lines: number;
+                                        badJson: number;
+                                        skillLines: number;
+                                        unknownType: number;
+                                        incomplete: number;
+                                    };
+                                } | null;
+                                unexplained: number | null;
+                                unknownTypes: string[];
                                 error: string | null;
                             } | null;
                             recent: {
@@ -592,6 +615,29 @@ export interface paths {
                                 skills: number | null;
                                 gates: number | null;
                                 decisions: number | null;
+                                stats: {
+                                    transcripts: {
+                                        lines: number;
+                                        badJson: number;
+                                        filesEmpty: number;
+                                        typeCounts: {
+                                            [key: string]: number;
+                                        };
+                                        unknownTypeLines: number;
+                                        assistantLines: number;
+                                        synthetic: number;
+                                        unusable: number;
+                                    };
+                                    events: {
+                                        lines: number;
+                                        badJson: number;
+                                        skillLines: number;
+                                        unknownType: number;
+                                        incomplete: number;
+                                    };
+                                } | null;
+                                unexplained: number | null;
+                                unknownTypes: string[];
                                 error: string | null;
                             }[];
                         };

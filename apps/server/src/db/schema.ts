@@ -182,6 +182,51 @@ export type ModelPrice = typeof modelPrices.$inferSelect
 // ingestion 실행 기록. 스케줄러 상태가 메모리에만 있으면 재시작 때 "마지막 성공이 언제였나"가
 // 사라진다. 실행 하나당 한 줄. 시작할 때 running으로 넣고 끝나면 같은 줄을 갱신한다.
 // ---------------------------------------------------------------------------
+// 파서 자기 진단 카운터.
+//
+// 왜 필요한가: 지금까지 실행 기록에 남는 건 "넣은 행 수"뿐이다. turns=0 은 세 가지
+// 서로 다른 상황에서 똑같이 0으로 보인다.
+//   (1) 그 사이 아무 일도 없었다        — 정상
+//   (2) 읽은 줄이 전부 이미 들어가 있다  — 정상
+//   (3) 파서가 줄을 못 알아본다          — 고장
+// (3)은 우리가 코드를 바꿔서가 아니라 Claude Code가 로그 형식을 바꿔서 생긴다.
+// 구분하려면 "읽은 줄"과 "알아본 줄"을 따로 세야 한다.
+//
+// 카운터는 두 부류로 나눈다. 예상된 탈락(synthetic 응답, 설계상 안 넣는 skill 줄)은
+// 0이 아닌 게 정상이고, 설명 안 되는 탈락(badJson, unusable, unknownType, incomplete)은
+// 0이어야 정상이다. 화면에는 뒤쪽 합만 내보낸다.
+// 고장에는 두 모양이 있고, 카운터도 두 모양이 필요하다.
+//
+//   A형: 줄은 알아봤는데 못 쓴다. "assistant 줄 맞는데 usage 가 없다."
+//        → unusable, incomplete, badJson 이 잡는다.
+//   B형: 줄이 아예 우리 필터에 안 걸린다. 상류가 type 이름을 바꾸면 모든 줄이
+//        "관심사 아님"으로 조용히 빠지고, 화면은 조용한 시간과 똑같아 보인다.
+//        → typeCounts + unknownTypeLines 가 잡는다.
+//
+// B형이 더 흔하다. 상류가 실제로 하는 변경은 대개 필드나 타입 "이름" 바꾸기다.
+export type TranscriptStats = {
+  lines: number // 읽은 줄 전체
+  badJson: number // JSON.parse 실패 (설명 안 됨)
+  filesEmpty: number // 세션을 하나도 못 알아본 파일 (설명 안 됨)
+  // type 별 줄 수 전체. 아는 타입까지 다 담는다. 경보와 별개로,
+  // "그날 assistant 가 0이고 response 가 201이었다"를 나중에 눈으로 확인하는 기록.
+  typeCounts: Record<string, number>
+  unknownTypeLines: number // 아는 타입 목록에 없는 줄 (설명 안 됨)
+  assistantLines: number // type=assistant 이고 message 가 있는 줄 = turn 후보
+  synthetic: number // model='<synthetic>' 이라 뺀 줄 (예상됨)
+  unusable: number // assistant 인데 id/usage/model 이 없는 줄 (설명 안 됨)
+}
+
+export type EventStats = {
+  lines: number
+  badJson: number // (설명 안 됨)
+  skillLines: number // type=skill. 설계상 안 넣는다 (예상됨)
+  unknownType: number // 우리가 모르는 type (설명 안 됨)
+  incomplete: number // 아는 type 인데 필수 필드가 없다 (설명 안 됨)
+}
+
+export type IngestStats = { transcripts: TranscriptStats; events: EventStats }
+
 export const ingestRuns = pgTable('ingest_runs', {
   id: serial('id').primaryKey(),
   trigger: text('trigger', { enum: ['startup', 'interval', 'manual'] }).notNull(),
@@ -193,6 +238,10 @@ export const ingestRuns = pgTable('ingest_runs', {
   skills: integer('skills'),
   gates: integer('gates'),
   decisions: integer('decisions'),
+  // 열을 열한 개 더 늘리지 않고 jsonb 하나에 둔다. 어떤 카운터가 실제로 드리프트를
+  // 잡아내는지 아직 모르고, 카운터가 바뀔 때마다 스키마를 흔들고 싶지 않다.
+  // 대신 API 응답 스키마(scheduler.ts)에서 필드 이름을 전부 못박아 계약은 유지한다.
+  stats: jsonb('stats').$type<IngestStats>(),
   error: text('error'),
 })
 

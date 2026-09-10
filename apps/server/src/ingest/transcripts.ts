@@ -11,7 +11,7 @@ import { createInterface } from 'node:readline'
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import { db } from '../db/index.js'
-import { sessions, turns, skillInvocations } from '../db/schema.js'
+import { sessions, turns, skillInvocations, type TranscriptStats } from '../db/schema.js'
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
@@ -69,6 +69,42 @@ const BUILTIN_COMMANDS = new Set([
   'keybindings',
 ])
 
+// 2026-09-10 기준 실제 트랜스크립트에 나타나는 type 전부(22종). 여기 없는 type 이
+// 나오면 unknownTypeLines 로 센다. 그게 "상류가 형식을 바꿨다"의 신호다.
+//
+// 대가를 알고 쓴다: Claude Code 가 무해한 새 type 을 추가하기만 해도 경보가 울린다.
+// 오탐이지만 받아들인다 — "처음 보는 줄 모양이 나왔다"는 어차피 알고 싶은 사실이고,
+// 고치는 비용은 여기에 한 줄 추가다. BUILTIN_COMMANDS 와 같은 종류의 유지보수 목록.
+export const KNOWN_TYPES = new Set([
+  'assistant',
+  'attachment',
+  'user',
+  'mode',
+  'last-prompt',
+  'bridge-session',
+  'system',
+  'ai-title',
+  'atis-latch',
+  'file-history-snapshot',
+  'queue-operation',
+  'permission-mode',
+  'pr-link',
+  'custom-title',
+  'file-history-delta',
+  'frame-link',
+  'cost-state',
+  'agent-name',
+  'artifact-autoreact-ledger',
+  'artifact-comment-monitor',
+  // 워크플로 journal.jsonl 의 줄. 트랜스크립트가 아니지만 glob 이 같이 집는다.
+  'started',
+  'result',
+])
+
+// type 이 문자열이 아닌 줄(필드 자체가 사라진 경우)에 쓸 이름. 집계 키로 쓰려면
+// 이름이 있어야 하고, 실제 type 과 겹치지 않게 꺾쇠를 붙인다.
+const NO_TYPE = '<none>'
+
 type Line = {
   type: string
   uuid?: string
@@ -121,7 +157,11 @@ type Parsed = {
 
 // 파일 하나를 끝까지 읽어 넣을 행들을 메모리에 모은다.
 // 264MB짜리 폴더를 통째로 읽지 않고 파일 단위로 처리하는 이유다.
-async function parseFile(path: string): Promise<Parsed | null> {
+//
+// stats는 호출자가 넘긴 실행 단위 누적기다. 반환값에 얹지 않고 인자로 받는 이유:
+// 카운터는 파일별 결과가 아니라 실행 전체의 합이고, 파일마다 합치는 코드를
+// 호출부에 또 쓰고 싶지 않아서다.
+async function parseFile(path: string, stats: TranscriptStats): Promise<Parsed | null> {
   const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity })
 
   let session: typeof sessions.$inferInsert | null = null
@@ -130,12 +170,24 @@ async function parseFile(path: string): Promise<Parsed | null> {
   const skills: Parsed['skills'] = []
 
   for await (const raw of rl) {
+    stats.lines++
     let line: Line
     try {
       line = JSON.parse(raw)
     } catch {
-      continue // 잘린 줄(강제 종료 등)은 건너뛴다
+      stats.badJson++ // 잘린 줄(강제 종료 등)은 건너뛴다
+      continue
     }
+
+    // sessionId 검사보다 먼저 센다. sessionId 필드 이름이 바뀌는 경우에도
+    // type 집계는 남아야 "줄은 멀쩡히 있었다"를 보여줄 수 있다.
+    const type = typeof line.type === 'string' ? line.type : NO_TYPE
+    stats.typeCounts[type] = (stats.typeCounts[type] ?? 0) + 1
+    if (!KNOWN_TYPES.has(type)) stats.unknownTypeLines++
+
+    // 여기 걸리는 줄은 세지 않는다. summary, file-history-snapshot 처럼 세션 필드가
+    // 원래 없는 줄이 정상적으로 많이 섞여 있어서, 세면 신호가 아니라 잡음이 된다.
+    // sessionId 이름 자체가 바뀌는 경우는 filesEmpty 가 대신 잡는다.
     if (!line.sessionId || !line.timestamp) continue
     const ts = new Date(line.timestamp)
 
@@ -174,8 +226,19 @@ async function parseFile(path: string): Promise<Parsed | null> {
 
     if (line.type !== 'assistant' || !line.message) continue
     const m = line.message
+    stats.assistantLines++
     // '<synthetic>'은 API 에러 등을 Claude Code가 만들어 넣은 가짜 응답. 토큰 0.
-    if (!m.id || !m.usage || !m.model || m.model === '<synthetic>') continue
+    // 예상된 탈락이라 unusable 과 따로 센다.
+    if (m.model === '<synthetic>') {
+      stats.synthetic++
+      continue
+    }
+    // 여기 걸리면 assistant 줄인데 우리가 쓰는 필드가 없다는 뜻이다. 평소 0이어야 한다.
+    // 상류가 usage/id 필드 이름을 바꾸면 이 숫자가 assistantLines 와 같아진다.
+    if (!m.id || !m.usage || !m.model) {
+      stats.unusable++
+      continue
+    }
 
     if (!turnMap.has(m.id)) {
       turnMap.set(m.id, {
@@ -221,9 +284,14 @@ function chunks<T>(arr: T[]): T[][] {
   return out
 }
 
-async function ingestFile(path: string) {
-  const parsed = await parseFile(path)
-  if (!parsed) return { turns: 0, skills: 0 }
+async function ingestFile(path: string, stats: TranscriptStats) {
+  const parsed = await parseFile(path, stats)
+  if (!parsed) {
+    // 줄은 있는데 세션을 못 만들었다는 건 cwd/sessionId 를 한 줄도 못 읽었다는 뜻이다.
+    // 진짜 빈 파일도 여기 걸리므로 0이 아닌 기준선이 있을 수 있다. 급증이 신호다.
+    stats.filesEmpty++
+    return { turns: 0, skills: 0 }
+  }
 
   // 파일 하나 = 트랜잭션 하나. 중간에 죽으면 그 파일은 하나도 안 들어간 상태로 남아
   // 다음 실행이 처음부터 다시 넣는다. 세션만 들어가고 turn은 없는 반쪽 상태를 막는다.
@@ -258,10 +326,20 @@ async function ingestFile(path: string) {
   })
 }
 
-export type TranscriptSummary = { files: number; turns: number; skills: number }
+export type TranscriptSummary = { files: number; turns: number; skills: number; stats: TranscriptStats }
 
 export async function ingestTranscripts(): Promise<TranscriptSummary> {
   const total = { files: 0, turns: 0, skills: 0 }
+  const stats: TranscriptStats = {
+    lines: 0,
+    badJson: 0,
+    filesEmpty: 0,
+    typeCounts: {},
+    unknownTypeLines: 0,
+    assistantLines: 0,
+    synthetic: 0,
+    unusable: 0,
+  }
 
   // '**' 로 서브에이전트 파일까지 훑는다. 위치:
   //   <proj>/<session>.jsonl                                  메인 대화
@@ -269,11 +347,11 @@ export async function ingestTranscripts(): Promise<TranscriptSummary> {
   //   <proj>/<session>/subagents/workflows/<wf>/agent-*.jsonl Workflow 도구 안의 에이전트
   // 서브에이전트 줄의 sessionId는 부모와 같아서 같은 세션에 turns가 붙는다.
   for await (const path of glob(join(PROJECTS_DIR, '**', '*.jsonl'))) {
-    const r = await ingestFile(path)
+    const r = await ingestFile(path, stats)
     total.files++
     total.turns += r.turns
     total.skills += r.skills
   }
 
-  return total
+  return { ...total, stats }
 }
