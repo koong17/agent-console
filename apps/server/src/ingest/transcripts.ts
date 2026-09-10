@@ -5,12 +5,11 @@
 // 여러 번 돌려도 안전하다. 키가 원본 ID라 이미 있는 행은 DB가 거절하고,
 // 우리는 그 거절을 에러가 아니라 "건너뜀"으로 처리한다(onConflictDoNothing).
 
-import { createReadStream } from 'node:fs'
 import { glob } from 'node:fs/promises'
-import { createInterface } from 'node:readline'
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import { db } from '../db/index.js'
+import { readLines } from './lines.js'
 import { sessions, turns, skillInvocations, type TranscriptStats } from '../db/schema.js'
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
@@ -96,10 +95,16 @@ export const KNOWN_TYPES = new Set([
   'agent-name',
   'artifact-autoreact-ledger',
   'artifact-comment-monitor',
-  // 워크플로 journal.jsonl 의 줄. 트랜스크립트가 아니지만 glob 이 같이 집는다.
-  'started',
-  'result',
 ])
+
+// 트랜스크립트가 아닌데 glob 이 같이 집는 파일. 대화가 아니라 워크플로 실행 기록이라
+// 세션도 턴도 없다. 빼지 않으면 filesEmpty 가 영원히 1이고, 그러면
+// "설명 안 되는 탈락 = 0" 이라는 기준이 성립하지 않는다.
+//
+// 이름을 하나만 박아두는 게 위험해 보이지만, 앞으로 다른 비-트랜스크립트 파일이
+// 섞여 들어오면 그 파일의 type 들이 unknownTypeLines 로 잡힌다. 목록을 미리
+// 완벽하게 만들 필요가 없는 이유다.
+const NOT_TRANSCRIPT = new Set(['journal.jsonl'])
 
 // type 이 문자열이 아닌 줄(필드 자체가 사라진 경우)에 쓸 이름. 집계 키로 쓰려면
 // 이름이 있어야 하고, 실제 type 과 겹치지 않게 꺾쇠를 붙인다.
@@ -162,14 +167,12 @@ type Parsed = {
 // 카운터는 파일별 결과가 아니라 실행 전체의 합이고, 파일마다 합치는 코드를
 // 호출부에 또 쓰고 싶지 않아서다.
 async function parseFile(path: string, stats: TranscriptStats): Promise<Parsed | null> {
-  const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity })
-
   let session: typeof sessions.$inferInsert | null = null
   // 같은 message.id가 여러 줄에 나오므로 Map으로 한 번만 담는다.
   const turnMap = new Map<string, typeof turns.$inferInsert>()
   const skills: Parsed['skills'] = []
 
-  for await (const raw of rl) {
+  for await (const raw of readLines(path)) {
     stats.lines++
     let line: Line
     try {
@@ -347,6 +350,7 @@ export async function ingestTranscripts(): Promise<TranscriptSummary> {
   //   <proj>/<session>/subagents/workflows/<wf>/agent-*.jsonl Workflow 도구 안의 에이전트
   // 서브에이전트 줄의 sessionId는 부모와 같아서 같은 세션에 turns가 붙는다.
   for await (const path of glob(join(PROJECTS_DIR, '**', '*.jsonl'))) {
+    if (NOT_TRANSCRIPT.has(basename(path))) continue
     const r = await ingestFile(path, stats)
     total.files++
     total.turns += r.turns

@@ -10,11 +10,10 @@
 // 한 번 읽으면서 두 표의 행을 동시에 모은다. 줄 타입별로 파일을 두 번 읽는 것보다 단순하고,
 // 두 표는 서로 참조하지 않아 넣는 순서도 상관없다.
 
-import { createReadStream } from 'node:fs'
-import { createInterface } from 'node:readline'
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import { db } from '../db/index.js'
+import { readLines } from './lines.js'
 import { gateEvents, decisions, type EventStats } from '../db/schema.js'
 
 const EVENTS_PATH = join(homedir(), '.claude', 'harness-events.jsonl')
@@ -46,10 +45,10 @@ export async function ingestEvents(): Promise<EventsSummary> {
   const decisionRows: Array<typeof decisions.$inferInsert> = []
   const stats: EventStats = { lines: 0, badJson: 0, skillLines: 0, unknownType: 0, incomplete: 0 }
 
-  let rl
   try {
-    rl = createInterface({ input: createReadStream(EVENTS_PATH), crlfDelay: Infinity })
-    for await (const raw of rl) {
+    // 훅이 남기는 decision 줄에는 질문 원문이 그대로 들어간다. 거기 U+2028 이
+    // 섞이면 transcript 와 같은 이유로 줄이 잘린다. 같은 리더를 쓴다.
+    for await (const raw of readLines(EVENTS_PATH)) {
       stats.lines++
       let e: EventLine
       try {
