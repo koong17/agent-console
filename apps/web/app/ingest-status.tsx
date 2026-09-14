@@ -19,6 +19,14 @@ export function IngestStatus({ status }: { status: Status }) {
         <>
           {' · '}읽은 줄 <strong>{lines.toLocaleString()}</strong> · turns +<strong>{last.turns ?? 0}</strong>{' '}
           · gates +<strong>{last.gates ?? 0}</strong>
+          {/* 이미 있던 행의 토큰을 더 큰 값으로 고친 수. 정상 실행에서는 0이라 숨긴다.
+              삽입 수(turns +N)와 섞으면 "새로 들어온 양"이 거짓이 된다. */}
+          {last.turnsUpdated ? (
+            <>
+              {' '}
+              · turns ~<strong>{last.turnsUpdated.toLocaleString()}</strong>
+            </>
+          ) : null}
         </>
       )}
       {last.status === 'failed' && last.error && <> · {last.error}</>}

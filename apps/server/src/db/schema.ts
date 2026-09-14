@@ -235,6 +235,9 @@ export const ingestRuns = pgTable('ingest_runs', {
   finishedAt: timestamp('finished_at', { withTimezone: true }),
   files: integer('files'),
   turns: integer('turns'),
+  // 이미 있던 행의 토큰이 더 큰 값으로 교정된 수. 정상 실행에서는 0이다.
+  // 0이 아니면 "전에 잘못 넣었던 값을 이번에 고쳤다"는 뜻이라 삽입 수와 섞으면 안 된다.
+  turnsUpdated: integer('turns_updated'),
   skills: integer('skills'),
   gates: integer('gates'),
   decisions: integer('decisions'),

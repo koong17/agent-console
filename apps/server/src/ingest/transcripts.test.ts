@@ -73,6 +73,40 @@ describe('parseFile', () => {
     assert.equal(stats.assistantLines, 3)
   })
 
+  // 2026-09-10 실제 버그. Claude Code 는 스트리밍 중간 상태를 먼저 쓰고 완성본을 나중에 쓴다.
+  // 첫 줄을 채택하면 output_tokens 가 미완성 값으로 굳는다 — 전체의 22.75%가 그렇게 빠져 있었다.
+  test('같은 id 의 토큰이 다르면 항목별 max 를 취한다', async () => {
+    const { parsed } = await parse([
+      assistantLine({}, { usage: { input_tokens: 2, output_tokens: 1, cache_read_input_tokens: 100 } }),
+      assistantLine({}, { usage: { input_tokens: 2, output_tokens: 145, cache_read_input_tokens: 100 } }),
+    ])
+
+    assert.equal(parsed?.turns.length, 1)
+    assert.equal(parsed?.turns[0]!.outputTokens, 145)
+    assert.equal(parsed?.turns[0]!.cacheReadTokens, 100)
+  })
+
+  // max 는 순서 가정을 하지 않는다. 큰 값이 먼저 와도 결과가 같아야 한다.
+  test('큰 값이 먼저 와도 max 결과는 같다', async () => {
+    const { parsed } = await parse([
+      assistantLine({}, { usage: { input_tokens: 2, output_tokens: 145 } }),
+      assistantLine({}, { usage: { input_tokens: 2, output_tokens: 1 } }),
+    ])
+
+    assert.equal(parsed?.turns[0]!.outputTokens, 145)
+  })
+
+  // 토큰만 합친다. ts 를 마지막 줄로 옮기면 일별 비용 집계의 날짜 경계가 조용히 움직인다.
+  test('토큰이 아닌 열은 첫 줄 값을 유지한다', async () => {
+    const { parsed } = await parse([
+      assistantLine({ timestamp: '2026-09-10T01:00:00.000Z' }),
+      assistantLine({ timestamp: '2026-09-10T23:00:00.000Z' }, { model: 'claude-haiku-4-5-20251001' }),
+    ])
+
+    assert.equal(parsed?.turns[0]!.ts.toISOString(), '2026-09-10T01:00:00.000Z')
+    assert.equal(parsed?.turns[0]!.model, 'claude-opus-5')
+  })
+
   test('usage 없는 assistant 줄은 unusable 로 잡힌다', async () => {
     const line = assistantLine()
     delete (line.message as Record<string, unknown>).usage

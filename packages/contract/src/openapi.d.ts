@@ -575,6 +575,7 @@ export interface paths {
                                 finishedAt: string | null;
                                 files: number | null;
                                 turns: number | null;
+                                turnsUpdated: number | null;
                                 skills: number | null;
                                 gates: number | null;
                                 decisions: number | null;
@@ -612,6 +613,7 @@ export interface paths {
                                 finishedAt: string | null;
                                 files: number | null;
                                 turns: number | null;
+                                turnsUpdated: number | null;
                                 skills: number | null;
                                 gates: number | null;
                                 decisions: number | null;

@@ -1111,6 +1111,7 @@
                             "finishedAt",
                             "files",
                             "turns",
+                            "turnsUpdated",
                             "skills",
                             "gates",
                             "decisions",
@@ -1193,6 +1194,16 @@
                               ]
                             },
                             "turns": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "turnsUpdated": {
                               "anyOf": [
                                 {
                                   "type": "integer"
@@ -1362,6 +1373,7 @@
                           "finishedAt",
                           "files",
                           "turns",
+                          "turnsUpdated",
                           "skills",
                           "gates",
                           "decisions",
@@ -1444,6 +1456,16 @@
                             ]
                           },
                           "turns": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "turnsUpdated": {
                             "anyOf": [
                               {
                                 "type": "integer"

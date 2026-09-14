@@ -2,12 +2,15 @@
 // sessions / turns / skill_invocations에 넣는다.
 //
 // 진입점은 둘이다. CLI(pnpm ingest, cli.ts)와 서버 안 스케줄러(scheduler.ts).
-// 여러 번 돌려도 안전하다. 키가 원본 ID라 이미 있는 행은 DB가 거절하고,
-// 우리는 그 거절을 에러가 아니라 "건너뜀"으로 처리한다(onConflictDoNothing).
+// 여러 번 돌려도 안전하다. 키가 원본 ID라서 이미 있는 행은 DB가 걸러낸다.
+// sessions/skill_invocations 는 건너뛰고(onConflictDoNothing), turns 는 토큰 열만
+// 더 큰 값으로 갱신한다(onConflictDoUpdate + greatest). 같은 파일을 다시 읽으면
+// 결과가 같은 값으로 수렴한다 — "아무것도 안 바꿈"이 아니라 "같은 상태로 수렴".
 
 import { glob } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
+import { sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { readLines } from './lines.js'
 import { sessions, turns, skillInvocations, type TranscriptStats } from '../db/schema.js'
@@ -258,19 +261,39 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
       continue
     }
 
-    if (!turnMap.has(m.id)) {
-      turnMap.set(m.id, {
-        id: m.id,
-        sessionId: line.sessionId,
-        ts,
-        model: m.model,
-        sidechain: line.isSidechain === true,
-        inputTokens: m.usage.input_tokens,
-        cacheReadTokens: m.usage.cache_read_input_tokens ?? 0,
-        cacheCreationTokens: m.usage.cache_creation_input_tokens ?? 0,
-        cacheCreation1hTokens: m.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0,
-        outputTokens: m.usage.output_tokens,
-      })
+    const row = {
+      id: m.id,
+      sessionId: line.sessionId,
+      ts,
+      model: m.model,
+      sidechain: line.isSidechain === true,
+      inputTokens: m.usage.input_tokens,
+      cacheReadTokens: m.usage.cache_read_input_tokens ?? 0,
+      cacheCreationTokens: m.usage.cache_creation_input_tokens ?? 0,
+      cacheCreation1hTokens: m.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0,
+      outputTokens: m.usage.output_tokens,
+    }
+    const prev = turnMap.get(m.id)
+    if (!prev) {
+      turnMap.set(m.id, row)
+    } else {
+      // 같은 응답이 여러 줄에 걸쳐 기록되고, 줄마다 usage 가 같지 않다.
+      // Claude Code 는 스트리밍 중간 상태를 먼저 쓰고 완성본을 나중에 쓴다.
+      // 그래서 첫 줄을 채택하면 output_tokens 가 미완성 값으로 굳는다 —
+      // 2026-09-10 측정: 전체 output 토큰의 22.75%가 이렇게 누락돼 있었다.
+      //
+      // 마지막 줄 대신 항목별 max 를 쓴다. 실측으로 값이 줄어드는 경우는 0건이라
+      // 두 방식의 결과가 같지만, max 는 "완성본이 파일에서 나중"이라는 순서 가정에
+      // 기대지 않는다. 이 파일 형식은 우리가 통제하지 않으므로 가정을 줄인다.
+      //
+      // 토큰만 max 로 합친다. ts/model/sidechain 은 첫 줄 값을 유지한다 —
+      // ts 를 마지막 줄로 옮기면 일별 비용 집계의 날짜 경계가 조용히 움직인다.
+      prev.inputTokens = Math.max(prev.inputTokens, row.inputTokens)
+      prev.cacheReadTokens = Math.max(prev.cacheReadTokens, row.cacheReadTokens)
+      prev.cacheCreationTokens = Math.max(prev.cacheCreationTokens, row.cacheCreationTokens)
+      // 이 열만 스키마에 default(0)이 있어서 타입이 optional 이다. 값은 항상 채워 넣지만 좁혀준다.
+      prev.cacheCreation1hTokens = Math.max(prev.cacheCreation1hTokens ?? 0, row.cacheCreation1hTokens)
+      prev.outputTokens = Math.max(prev.outputTokens, row.outputTokens)
     }
 
     for (const block of typeof m.content === 'string' ? [] : (m.content ?? [])) {
@@ -308,7 +331,7 @@ async function ingestFile(path: string, stats: TranscriptStats) {
     // 줄은 있는데 세션을 못 만들었다는 건 cwd/sessionId 를 한 줄도 못 읽었다는 뜻이다.
     // 진짜 빈 파일도 여기 걸리므로 0이 아닌 기준선이 있을 수 있다. 급증이 신호다.
     stats.filesEmpty++
-    return { turns: 0, skills: 0 }
+    return { turns: 0, turnsUpdated: 0, skills: 0 }
   }
 
   // 파일 하나 = 트랜잭션 하나. 중간에 죽으면 그 파일은 하나도 안 들어간 상태로 남아
@@ -324,10 +347,44 @@ async function ingestFile(path: string, stats: TranscriptStats) {
       })
 
     let insertedTurns = 0
+    let updatedTurns = 0
     for (const batch of chunks(parsed.turns)) {
-      // returning으로 실제 들어간 행만 돌려받는다. 두 번째 실행에서 0이 나와야 정상.
-      const rows = await tx.insert(turns).values(batch).onConflictDoNothing().returning({ id: turns.id })
-      insertedTurns += rows.length
+      // 예전에는 onConflictDoNothing 이었다. 그러면 한 번 잘못 들어간 토큰 값이
+      // 영구히 남는다 — 실제로 output_tokens 미완성 값 5009행이 그렇게 굳어 있었다.
+      // 이제 토큰 열만 갱신한다. 나머지 열(ts/model/sidechain)은 안 건드린다.
+      //
+      // setWhere 가 핵심이다. 이게 없으면 매 실행마다 2만 행을 의미 없이 덮어쓰고,
+      // returning 이 그 행을 다 돌려줘서 "turns +N"이 항상 2만이 된다 — 카운터가 거짓말한다.
+      // 조건을 "토큰이 하나라도 커질 때"로 두면 정상 실행에서는 갱신이 0건이고,
+      // returning 은 새로 들어간 행만 돌려준다. 카운터의 뜻이 유지된다.
+      //
+      // GREATEST 로 합치는 이유: 한 실행 안에서는 parseFile 이 이미 max 를 냈지만,
+      // DB 에 이미 있는 행과 비교하면 이번 값이 더 작을 수도 있다(파일이 잘려 다시 읽히는 경우).
+      // 내려가는 갱신을 만들지 않는다.
+      const rows = await tx
+        .insert(turns)
+        .values(batch)
+        .onConflictDoUpdate({
+          target: turns.id,
+          set: {
+            inputTokens: sql`greatest(${turns.inputTokens}, excluded.input_tokens)`,
+            cacheReadTokens: sql`greatest(${turns.cacheReadTokens}, excluded.cache_read_tokens)`,
+            cacheCreationTokens: sql`greatest(${turns.cacheCreationTokens}, excluded.cache_creation_tokens)`,
+            cacheCreation1hTokens: sql`greatest(${turns.cacheCreation1hTokens}, excluded.cache_creation_1h_tokens)`,
+            outputTokens: sql`greatest(${turns.outputTokens}, excluded.output_tokens)`,
+          },
+          setWhere: sql`excluded.input_tokens > ${turns.inputTokens}
+            or excluded.cache_read_tokens > ${turns.cacheReadTokens}
+            or excluded.cache_creation_tokens > ${turns.cacheCreationTokens}
+            or excluded.cache_creation_1h_tokens > ${turns.cacheCreation1hTokens}
+            or excluded.output_tokens > ${turns.outputTokens}`,
+        })
+        // xmax=0 이면 이 행은 INSERT 였다. 0이 아니면 UPDATE 다.
+        // Postgres 가 행마다 들고 있는 시스템 열이라 별도 조회 없이 둘을 가른다.
+        .returning({ id: turns.id, inserted: sql<boolean>`(xmax = 0)` })
+      for (const r of rows)
+        if (r.inserted) insertedTurns++
+        else updatedTurns++
     }
 
     let insertedSkills = 0
@@ -340,14 +397,21 @@ async function ingestFile(path: string, stats: TranscriptStats) {
       insertedSkills += rows.length
     }
 
-    return { turns: insertedTurns, skills: insertedSkills }
+    return { turns: insertedTurns, turnsUpdated: updatedTurns, skills: insertedSkills }
   })
 }
 
-export type TranscriptSummary = { files: number; turns: number; skills: number; stats: TranscriptStats }
+export type TranscriptSummary = {
+  files: number
+  turns: number
+  // 이미 있던 행의 토큰이 더 큰 값으로 교정된 수. 정상 실행에서는 0이어야 한다.
+  turnsUpdated: number
+  skills: number
+  stats: TranscriptStats
+}
 
 export async function ingestTranscripts(): Promise<TranscriptSummary> {
-  const total = { files: 0, turns: 0, skills: 0 }
+  const total = { files: 0, turns: 0, turnsUpdated: 0, skills: 0 }
   const stats = emptyTranscriptStats()
 
   // '**' 로 서브에이전트 파일까지 훑는다. 위치:
@@ -360,6 +424,7 @@ export async function ingestTranscripts(): Promise<TranscriptSummary> {
     const r = await ingestFile(path, stats)
     total.files++
     total.turns += r.turns
+    total.turnsUpdated += r.turnsUpdated
     total.skills += r.skills
   }
 
