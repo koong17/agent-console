@@ -154,6 +154,21 @@ function parseCommands(content: MessageContent | undefined) {
   return out
 }
 
+// 카운터를 0으로 시작한 새 객체. ingestTranscripts 와 테스트가 같은 초기 상태를 쓴다.
+// 인라인 리터럴로 두면 카운터를 추가할 때 한쪽만 고치고 다른 쪽은 undefined 로 남는다.
+export function emptyTranscriptStats(): TranscriptStats {
+  return {
+    lines: 0,
+    badJson: 0,
+    filesEmpty: 0,
+    typeCounts: {},
+    unknownTypeLines: 0,
+    assistantLines: 0,
+    synthetic: 0,
+    unusable: 0,
+  }
+}
+
 type Parsed = {
   session: typeof sessions.$inferInsert
   turns: Array<typeof turns.$inferInsert>
@@ -166,7 +181,7 @@ type Parsed = {
 // stats는 호출자가 넘긴 실행 단위 누적기다. 반환값에 얹지 않고 인자로 받는 이유:
 // 카운터는 파일별 결과가 아니라 실행 전체의 합이고, 파일마다 합치는 코드를
 // 호출부에 또 쓰고 싶지 않아서다.
-async function parseFile(path: string, stats: TranscriptStats): Promise<Parsed | null> {
+export async function parseFile(path: string, stats: TranscriptStats): Promise<Parsed | null> {
   let session: typeof sessions.$inferInsert | null = null
   // 같은 message.id가 여러 줄에 나오므로 Map으로 한 번만 담는다.
   const turnMap = new Map<string, typeof turns.$inferInsert>()
@@ -333,16 +348,7 @@ export type TranscriptSummary = { files: number; turns: number; skills: number; 
 
 export async function ingestTranscripts(): Promise<TranscriptSummary> {
   const total = { files: 0, turns: 0, skills: 0 }
-  const stats: TranscriptStats = {
-    lines: 0,
-    badJson: 0,
-    filesEmpty: 0,
-    typeCounts: {},
-    unknownTypeLines: 0,
-    assistantLines: 0,
-    synthetic: 0,
-    unusable: 0,
-  }
+  const stats = emptyTranscriptStats()
 
   // '**' 로 서브에이전트 파일까지 훑는다. 위치:
   //   <proj>/<session>.jsonl                                  메인 대화
