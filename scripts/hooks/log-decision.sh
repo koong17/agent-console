@@ -15,7 +15,7 @@ tool=$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null)
 [ "$tool" = "AskUserQuestion" ] || exit 0
 
 # 질문 하나당 한 줄(한 번의 호출에 질문이 최대 4개).
-#   recommended: 라벨에 "(Recommended)" 또는 "(추천)" 이 붙은 선택지. 없으면 null.
+#   recommended: 라벨에 "(Recommended)", "(추천)", "(권장)" 이 붙은 선택지. 없으면 null.
 #   chosen:      tool_response.answers 를 질문 문장으로 찾은 값. 다중 선택이면 콤마로 이어진 문자열,
 #                "Other" 로 직접 입력했으면 선택지에 없는 문장이 온다.
 #   agreed:      chosen == recommended. 둘 중 하나가 없으면 null (판정 불가와 "반대함"을 구분).
@@ -26,7 +26,7 @@ printf '%s' "$payload" | jq -c '
   | ($p.tool_input.questions // [])[]
   | . as $q
   | ($q.options // [] | map(.label)) as $labels
-  | ($labels | map(select(test("\\((Recommended|추천)\\)"))) | .[0]) as $rec
+  | ($labels | map(select(test("\\((Recommended|추천|권장)\\)"))) | .[0]) as $rec
   | (($resp.answers // {})[$q.question] // null) as $chosen
   | {
       ts: (now | floor),
