@@ -223,6 +223,7 @@ export type EventStats = {
   skillLines: number // type=skill. 설계상 안 넣는다 (예상됨)
   unknownType: number // 우리가 모르는 type (설명 안 됨)
   incomplete: number // 아는 type 인데 필수 필드가 없다 (설명 안 됨)
+  memoryDeny: number // type=memory-deny. 교정·선호를 프로젝트 메모리에 쓰려다 훅에 막힌 횟수 (예상됨)
 }
 
 export type IngestStats = { transcripts: TranscriptStats; events: EventStats }

@@ -599,6 +599,7 @@ export interface paths {
                                         skillLines: number;
                                         unknownType: number;
                                         incomplete: number;
+                                        memoryDeny: number;
                                     };
                                 } | null;
                                 unexplained: number | null;
@@ -637,6 +638,7 @@ export interface paths {
                                         skillLines: number;
                                         unknownType: number;
                                         incomplete: number;
+                                        memoryDeny: number;
                                     };
                                 } | null;
                                 unexplained: number | null;

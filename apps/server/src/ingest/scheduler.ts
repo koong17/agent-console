@@ -38,6 +38,7 @@ const IngestStatsSchema = Type.Object({
     skillLines: Type.Integer(),
     unknownType: Type.Integer(),
     incomplete: Type.Integer(),
+    memoryDeny: Type.Integer(),
   }),
 })
 

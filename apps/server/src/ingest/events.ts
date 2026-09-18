@@ -22,7 +22,7 @@ const EVENTS_PATH = join(homedir(), '.claude', 'harness-events.jsonl')
 // type으로 갈라 읽으므로 타입별 필드는 optional로 둔다.
 type EventLine = {
   ts: number
-  type: 'skill' | 'gate' | 'decision'
+  type: 'skill' | 'gate' | 'decision' | 'memory-deny'
   session_id: string
   cwd?: string
   // skill, gate
@@ -43,7 +43,7 @@ export type EventsSummary = { gates: number; decisions: number; stats: EventStat
 export async function ingestEvents(): Promise<EventsSummary> {
   const gateRows: Array<typeof gateEvents.$inferInsert> = []
   const decisionRows: Array<typeof decisions.$inferInsert> = []
-  const stats: EventStats = { lines: 0, badJson: 0, skillLines: 0, unknownType: 0, incomplete: 0 }
+  const stats: EventStats = { lines: 0, badJson: 0, skillLines: 0, unknownType: 0, incomplete: 0, memoryDeny: 0 }
 
   try {
     // 훅이 남기는 decision 줄에는 질문 원문이 그대로 들어간다. 거기 U+2028 이
@@ -90,6 +90,9 @@ export async function ingestEvents(): Promise<EventsSummary> {
             rawResponse: e.raw_response ?? null,
           })
         else stats.incomplete++
+      } else if (e.type === 'memory-deny') {
+        // memory-type-gate.sh 가 교정·선호를 프로젝트 메모리에 쓰려는 시도를 막은 기록. 건수만 본다.
+        stats.memoryDeny++
       } else {
         // 훅이 새 type 을 남기기 시작했는데 우리가 아직 안 읽고 있다는 뜻이다.
         stats.unknownType++

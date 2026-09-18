@@ -1312,7 +1312,8 @@
                                         "badJson",
                                         "skillLines",
                                         "unknownType",
-                                        "incomplete"
+                                        "incomplete",
+                                        "memoryDeny"
                                       ],
                                       "properties": {
                                         "lines": {
@@ -1328,6 +1329,9 @@
                                           "type": "integer"
                                         },
                                         "incomplete": {
+                                          "type": "integer"
+                                        },
+                                        "memoryDeny": {
                                           "type": "integer"
                                         }
                                       }
@@ -1574,7 +1578,8 @@
                                       "badJson",
                                       "skillLines",
                                       "unknownType",
-                                      "incomplete"
+                                      "incomplete",
+                                      "memoryDeny"
                                     ],
                                     "properties": {
                                       "lines": {
@@ -1590,6 +1595,9 @@
                                         "type": "integer"
                                       },
                                       "incomplete": {
+                                        "type": "integer"
+                                      },
+                                      "memoryDeny": {
                                         "type": "integer"
                                       }
                                     }
