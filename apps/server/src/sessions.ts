@@ -4,7 +4,7 @@ import { DateTime, Nullable } from './schemas.js'
 import { asc, count, desc, eq, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
 import { sessions, turns, modelPrices, skillInvocations } from './db/schema.js'
-import { turnCostUsd, totalCostUsd } from './cost.js'
+import { carryCostUsd, turnCostUsd, totalCostUsd } from './cost.js'
 
 const sumInt = (col: unknown) => sql<number>`coalesce(sum(${col}), 0)::bigint`.mapWith(Number)
 
@@ -18,6 +18,9 @@ const SessionSummary = Type.Object({
   models: Type.Array(Type.String()),
   outputTokens: Type.Integer(),
   costUsd: Nullable(Type.Number()),
+  // costUsd 중 캐시 읽기(= 컨텍스트 운반)가 차지하는 몫. 비율은 화면에서 나눈다 —
+  // 서버가 비율까지 내려주면 분모를 두 곳에서 정의하게 된다.
+  carryUsd: Nullable(Type.Number()),
 })
 
 const Session = Type.Object({
@@ -85,6 +88,7 @@ export function sessionRoutes(app: App) {
           models: sql<string[]>`array_remove(array_agg(distinct ${turns.model}), null)`,
           outputTokens: sumInt(turns.outputTokens),
           costUsd: totalCostUsd,
+          carryUsd: carryCostUsd,
         })
         .from(sessions)
         .leftJoin(turns, eq(turns.sessionId, sessions.id))

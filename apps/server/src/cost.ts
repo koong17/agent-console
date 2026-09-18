@@ -19,3 +19,18 @@ export const totalCostUsd = sql<number | null>`
        then null
        else coalesce(sum(${turnCostUsd}), 0)::double precision
   end`.mapWith((v) => (v === null ? null : Number(v)))
+
+// 그 합계 중 "이미 만든 걸 다시 실어 나르는 데" 쓴 몫. 캐시 읽기 비용만 따로 뽑는다.
+//
+// 왜 이 숫자가 따로 필요한가: 한 턴의 비용은 대부분 새로 만든 것(출력)이 아니라
+// 앞선 대화 전체를 다시 읽는 값이다. 대화가 길어질수록 턴마다 같은 컨텍스트를 다시
+// 읽으므로, 결과물은 그대로인데 비용만 늘어난다. 2026-09-16 실측에서 어떤 세션은
+// 출력에 $24, 운반에 $362를 썼다. 총액만 보면 그 모양이 안 보인다.
+//
+// 캐시 쓰기는 뺐다. 그건 "다음에 싸게 읽으려고 한 번 내는 값"이라 운반이 아니라 투자다.
+// NULL 규칙은 totalCostUsd 와 같다 — 단가 모르는 응답이 섞이면 비중도 못 믿는다.
+export const carryCostUsd = sql<number | null>`
+  case when count(*) filter (where ${turns.id} is not null and ${modelPrices.model} is null) > 0
+       then null
+       else coalesce(sum(${turns.cacheReadTokens} * ${modelPrices.cacheReadUsd}), 0)::double precision / 1000000.0
+  end`.mapWith((v) => (v === null ? null : Number(v)))

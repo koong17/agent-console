@@ -18,6 +18,13 @@ export default async function SessionsPage({ searchParams }: { searchParams: Pro
     (acc, s) => (acc === null || s.costUsd === null ? null : acc + s.costUsd),
     0,
   )
+  // 비용 중 캐시 읽기가 차지하는 몫. 대화가 길어질수록 턴마다 같은 컨텍스트를 다시 읽어서
+  // 결과물은 그대로인데 비용만 오른다. 그 모양은 총액만 봐서는 안 보인다.
+  const carry = list.reduce<number | null>(
+    (acc, s) => (acc === null || s.carryUsd === null ? null : acc + s.carryUsd),
+    0,
+  )
+  const carryPct = total && carry !== null ? Math.round((carry / total) * 100) : null
 
   return (
     <main>
@@ -25,6 +32,12 @@ export default async function SessionsPage({ searchParams }: { searchParams: Pro
       <h1>sessions{repo && <span className="sub"> · {repo}</span>}</h1>
       <p className="summary">
         <strong>{list.length}</strong>개 세션 · API 환산 비용 합계 <strong>{fmtUsd(total)}</strong>
+        {carryPct !== null && (
+          <>
+            {' · 그중 컨텍스트 운반 '}
+            <strong>{fmtUsd(carry)}</strong> (<strong>{carryPct}%</strong>)
+          </>
+        )}
         {repo && (
           <>
             {' · '}
@@ -42,11 +55,11 @@ export default async function SessionsPage({ searchParams }: { searchParams: Pro
                 <th>session</th>
                 <th>last seen</th>
                 <th>repo</th>
-                <th>branch</th>
                 <th>model</th>
                 <th className="num">turns</th>
                 <th className="num">output tokens</th>
                 <th className="num">cost</th>
+                <th className="num">carry %</th>
               </tr>
             </thead>
             <tbody>
@@ -57,11 +70,17 @@ export default async function SessionsPage({ searchParams }: { searchParams: Pro
                   </td>
                   <td className="mono">{fmtDay(s.lastSeenAt)}</td>
                   <td>{s.repo}</td>
-                  <td className="mono">{s.gitBranch ?? '-'}</td>
                   <td>{s.models.map((m) => m.replace('claude-', '')).join(', ') || '-'}</td>
                   <td className="num">{s.turns}</td>
                   <td className="num">{fmtNum(s.outputTokens)}</td>
                   <td className="num">{fmtUsd(s.costUsd)}</td>
+                  {/* 비용 중 캐시 읽기 몫. 절대액 대신 비율만 두는 이유는 폭이다 —
+                      이 표는 이미 화면보다 넓고, 합계 절대액은 위 요약 줄에 있다. */}
+                  <td className="num">
+                    {s.costUsd && s.carryUsd !== null
+                      ? `${Math.round((s.carryUsd / s.costUsd) * 100)}%`
+                      : '-'}
+                  </td>
                 </tr>
               ))}
             </tbody>

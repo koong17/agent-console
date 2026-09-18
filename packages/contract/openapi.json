@@ -404,7 +404,8 @@
                       "turns",
                       "models",
                       "outputTokens",
-                      "costUsd"
+                      "costUsd",
+                      "carryUsd"
                     ],
                     "properties": {
                       "id": {
@@ -444,6 +445,16 @@
                         "type": "integer"
                       },
                       "costUsd": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "carryUsd": {
                         "anyOf": [
                           {
                             "type": "number"

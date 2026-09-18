@@ -270,6 +270,7 @@ export interface paths {
                             models: string[];
                             outputTokens: number;
                             costUsd: number | null;
+                            carryUsd: number | null;
                         }[];
                     };
                 };
