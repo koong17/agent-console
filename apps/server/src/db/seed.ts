@@ -4,14 +4,22 @@ import { sql } from 'drizzle-orm'
 import { db, pool } from './index.js'
 import { modelPrices } from './schema.js'
 
-// 공식 문서 2026-09-03 확인. 단가는 USD / 100만 토큰.
-const verifiedAt = new Date('2026-09-03T00:00:00Z')
+// 공식 문서 2026-09-29 확인(기존 행 전부 대조, 값 변화 없음). 단가는 USD / 100만 토큰.
+const verifiedAt = new Date('2026-09-29T00:00:00Z')
 const rows = [
   ['claude-fable-5-1', 10, 12.5, 20, 0.25, 50],
   ['claude-fable-5', 10, 12.5, 20, 1, 50],
+  // 캐시 읽기가 입력의 0.05배다(표준은 0.1배). Fable 5.1 의 0.025배와 함께, 캐시 읽기를
+  // "입력 × 0.1" 로 계산하면 안 되는 이유다 — 그래서 단가를 열로 따로 둔다.
+  ['claude-opus-5-5', 4, 5, 8, 0.2, 20],
   ['claude-opus-5', 5, 6.25, 10, 0.5, 25],
   ['claude-opus-4-8', 5, 6.25, 10, 0.5, 25],
   ['claude-opus-4-7', 5, 6.25, 10, 0.5, 25],
+  // 아직 우리 데이터에 안 나타난 현행 모델. 같은 문서에서 같이 확인했으므로 미리 넣는다 —
+  // 하나라도 단가가 없으면 화면 전체 합계가 null 이 되므로, 공짜 보험이다.
+  ['claude-opus-4-6', 5, 6.25, 10, 0.5, 25],
+  ['claude-opus-4-5', 5, 6.25, 10, 0.5, 25],
+  ['claude-sonnet-5-5', 2, 2.5, 4, 0.2, 10],
   ['claude-sonnet-5', 2, 2.5, 4, 0.2, 10],
   ['claude-sonnet-4-6', 3, 3.75, 6, 0.3, 15],
   ['claude-haiku-4-5', 1, 1.25, 2, 0.1, 5],
