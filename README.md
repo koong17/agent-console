@@ -80,7 +80,25 @@ scripts/, .githooks/    계약 신선도 검사 (아래)
 | 루트 | `pnpm format` | prettier |
 | apps/server | `pnpm ingest` | ingestion 수동 실행 (서버가 켜져 있으면 알아서 돈다) |
 | apps/server | `pnpm db:push` / `db:seed` / `db:studio` | 스키마 적용 / 단가표 / 브라우저 DB 뷰어 |
+| apps/server | `pnpm test` | 테스트 30개. DATABASE_URL을 `agent_console_test`로 고정해서 돈다 |
+| apps/server | `pnpm test:db:push` | 테스트 DB에 스키마 적용. 스키마를 바꾸면 여기도 한 번 |
 | HTTP | `POST /ingest/run`, `GET /ingest/status` | 수동 트리거(202), 실행 이력 |
+
+## 테스트
+
+```sh
+createdb agent_console_test     # 처음 한 번
+cd apps/server
+pnpm test:db:push               # 스키마를 바꿀 때마다
+pnpm test
+```
+
+`src/**/*.test.ts` 30개. 두 층으로 나뉜다.
+
+- `lines.test.ts`, `transcripts.test.ts` — DB를 안 쓴다. `parseFile`이 파일을 읽어 메모리에 행을 모으는 데까지가 그 층이고, 카운터 로직도 전부 거기 있다.
+- `ingest-file.test.ts` — DB를 쓴다. 트랜잭션·충돌 처리·멱등성은 여기서만 검증된다.
+
+DB 테스트는 매 테스트 전에 표를 truncate 한다. 그래서 `pnpm test`가 DATABASE_URL을 테스트 DB로 고정하고, 그걸 우회해도 `before` 훅이 DB 이름이 `_test`로 끝나는지 한 번 더 본다.
 
 ## 서버 라우트를 바꿀 때
 

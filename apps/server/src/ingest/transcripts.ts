@@ -370,7 +370,7 @@ function chunks<T>(arr: T[]): T[][] {
   return out
 }
 
-async function ingestFile(path: string, stats: TranscriptStats) {
+export async function ingestFile(path: string, stats: TranscriptStats) {
   const parsed = await parseFile(path, stats)
   if (!parsed) {
     // 줄은 있는데 세션을 못 만들었다는 건 cwd/sessionId 를 한 줄도 못 읽었다는 뜻이다.
