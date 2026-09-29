@@ -83,6 +83,34 @@ export const turns = pgTable(
   (t) => [index('turns_session_ts_idx').on(t.sessionId, t.ts)],
 )
 
+// 도구 응답 하나당 한 줄. 컨텍스트가 어디서 커졌는지 이름을 붙이는 표다.
+//
+// 세션 상세의 컨텍스트 곡선은 "여기서 뛰었다"까지만 말한다. 무엇 때문인지는 못 말한다.
+// 도구 응답은 한 번 들어오면 대화가 끝날 때까지 컨텍스트에 남고, 남은 턴 수만큼
+// 캐시 읽기로 다시 계산된다. 그래서 큰 응답 하나의 비용은 그 크기 × 남은 턴 수다.
+//
+// 크기는 바이트다. 토큰이 아니다. 이미지(base64)와 텍스트는 바이트당 토큰 수가 다르므로
+// 바이트끼리만 비교하고, 토큰 기여는 앞뒤 턴의 컨텍스트 차이로 따로 봐야 한다.
+// 2026-09-29 측정: 26,487건 115MB, 40KB 넘는 응답 411건.
+export const toolResults = pgTable(
+  'tool_results',
+  {
+    // transcript 의 tool_use id. 도구 호출 하나에 응답 하나라 그대로 기본 키가 된다.
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    repo: text('repo'),
+    // 응답이 돌아온 줄의 시각. 컨텍스트 곡선과 같은 시간축에 놓으려고 둔다.
+    ts: timestamp('ts', { withTimezone: true }).notNull(),
+    // 도구 이름. tool_use 블록에서 가져온다 — tool_result 줄 자체에는 이름이 없다.
+    tool: text('tool').notNull(),
+    bytes: integer('bytes').notNull(),
+  },
+  // "이 세션에서 큰 것부터" 가 유일한 조회 형태다.
+  (t) => [index('tool_results_session_bytes_idx').on(t.sessionId, t.bytes)],
+)
+
 // 스킬 호출 하나당 한 줄.
 export const skillInvocations = pgTable(
   'skill_invocations',
@@ -157,6 +185,7 @@ export const decisions = pgTable(
 export type Session = typeof sessions.$inferSelect
 export type Turn = typeof turns.$inferSelect
 export type SkillInvocation = typeof skillInvocations.$inferSelect
+export type ToolResult = typeof toolResults.$inferSelect
 export type GateEvent = typeof gateEvents.$inferSelect
 export type Decision = typeof decisions.$inferSelect
 
@@ -212,6 +241,10 @@ export type TranscriptStats = {
   // "그날 assistant 가 0이고 response 가 201이었다"를 나중에 눈으로 확인하는 기록.
   typeCounts: Record<string, number>
   unknownTypeLines: number // 아는 타입 목록에 없는 줄 (설명 안 됨)
+  toolResults: number // 읽은 tool_result 블록 수
+  // tool_use 를 못 찾아 도구 이름을 모르는 tool_result (설명 안 됨).
+  // 2026-09-29 전수 측정에서 0건이었다 — 짝은 항상 같은 파일 안에 있다.
+  toolResultsUnmatched: number
   assistantLines: number // type=assistant 이고 message 가 있는 줄 = turn 후보
   synthetic: number // model='<synthetic>' 이라 뺀 줄 (예상됨)
   unusable: number // assistant 인데 id/usage/model 이 없는 줄 (설명 안 됨)

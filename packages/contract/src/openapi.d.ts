@@ -339,6 +339,16 @@ export interface paths {
                                 skill: string;
                                 source: "tool" | "command";
                             }[];
+                            toolResults: {
+                                total: number;
+                                totalBytes: number;
+                                byTool: {
+                                    tool: string;
+                                    count: number;
+                                    bytes: number;
+                                    maxBytes: number;
+                                }[];
+                            };
                             totalCostUsd: number | null;
                         };
                     };

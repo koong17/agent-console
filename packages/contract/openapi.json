@@ -496,6 +496,7 @@
                     "session",
                     "turns",
                     "skills",
+                    "toolResults",
                     "totalCostUsd"
                   ],
                   "properties": {
@@ -640,6 +641,48 @@
                                 ]
                               }
                             ]
+                          }
+                        }
+                      }
+                    },
+                    "toolResults": {
+                      "type": "object",
+                      "required": [
+                        "total",
+                        "totalBytes",
+                        "byTool"
+                      ],
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        },
+                        "totalBytes": {
+                          "type": "integer"
+                        },
+                        "byTool": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "tool",
+                              "count",
+                              "bytes",
+                              "maxBytes"
+                            ],
+                            "properties": {
+                              "tool": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              },
+                              "bytes": {
+                                "type": "integer"
+                              },
+                              "maxBytes": {
+                                "type": "integer"
+                              }
+                            }
                           }
                         }
                       }

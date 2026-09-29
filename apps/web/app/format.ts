@@ -30,3 +30,8 @@ export const fmtUsd = (usd: number | null) => (usd === null ? '단가 없음' : 
 export const fmtDay = (iso: string | null) => (iso ? dayFmt.format(new Date(iso)) : '-')
 export const fmtTime = (iso: string) => timeFmt.format(new Date(iso))
 export const fmtMinute = (iso: string) => minuteFmt.format(new Date(iso))
+
+// 도구 응답 크기. 토큰이 아니라 바이트다 — 이미지(base64)와 텍스트는 바이트당 토큰 수가
+// 달라서 서로 비교하면 안 되고, 같은 단위끼리만 크기를 견준다.
+export const fmtBytes = (b: number) =>
+  b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : `${Math.round(b / 1024)}KB`

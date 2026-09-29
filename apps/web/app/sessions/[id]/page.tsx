@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Nav } from '../../nav'
 import { api, callApi, unwrap, type ApiData } from '../../server'
-import { fmtDay, fmtMinute, fmtNum, fmtTime, fmtUsd } from '../../format'
+import { fmtBytes, fmtDay, fmtMinute, fmtNum, fmtTime, fmtUsd } from '../../format'
 import { ErrorState } from '../../error-state'
 import { ContextChart } from './context-chart'
 
@@ -28,7 +28,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
     if (isNextNotFound(err)) throw err
     return <ErrorState title="session" error={err} />
   }
-  const { session, turns, skills, totalCostUsd } = data
+  const { session, turns, skills, toolResults, totalCostUsd } = data
 
   // 막대 길이 기준. 세션 안에서 가장 비싼 응답을 100%로 둔다.
   const maxCost = Math.max(0, ...turns.map((t) => t.costUsd ?? 0))
@@ -66,6 +66,56 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
           한 열이 한 턴 · 높이는 그 턴에 읽은 입력 전체(새 입력 + 캐시 읽기 + 캐시 쓰기)
         </p>
         <ContextChart turns={turns} stamp={stamp} />
+      </section>
+
+      <section>
+        <h2>tool results</h2>
+        {/* 곡선이 "여기서 뛰었다"까지 말하고, 이 표가 "무엇 때문인지"를 말한다.
+            한 번 들어온 응답은 대화가 끝날 때까지 컨텍스트에 남아 턴마다 다시 읽힌다. */}
+        {toolResults.total === 0 ? (
+          <p className="state">이 세션에서 도구를 부른 기록이 없어요.</p>
+        ) : (
+          <>
+            <p className="summary">
+              <strong>{fmtNum(toolResults.total)}</strong>건 · 합계{' '}
+              <strong>{fmtBytes(toolResults.totalBytes)}</strong> · 도구별로 묶어 큰 것부터
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>tool</th>
+                    <th className="num">calls</th>
+                    <th className="num">total</th>
+                    <th className="num">largest</th>
+                    <th className="bar-cell"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {toolResults.byTool.map((t) => (
+                    <tr key={t.tool}>
+                      <td className="mono">{t.tool}</td>
+                      <td className="num">{fmtNum(t.count)}</td>
+                      <td className="num">{fmtBytes(t.bytes)}</td>
+                      <td className="num">{fmtBytes(t.maxBytes)}</td>
+                      <td className="bar-cell">
+                        {/* 이 세션 도구 응답 전체 대비 비율. 지배적인 도구가 한눈에 보인다. */}
+                        <div
+                          className="bar"
+                          style={{
+                            width: toolResults.totalBytes
+                              ? `${(t.bytes / toolResults.totalBytes) * 100}%`
+                              : 0,
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </section>
 
       <section>

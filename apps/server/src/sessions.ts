@@ -3,7 +3,7 @@ import type { App } from './app.js'
 import { DateTime, Nullable } from './schemas.js'
 import { asc, count, desc, eq, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
-import { sessions, turns, modelPrices, skillInvocations } from './db/schema.js'
+import { sessions, turns, modelPrices, skillInvocations, toolResults } from './db/schema.js'
 import { carryCostUsd, turnCostUsd, totalCostUsd } from './cost.js'
 
 const sumInt = (col: unknown) => sql<number>`coalesce(sum(${col}), 0)::bigint`.mapWith(Number)
@@ -57,15 +57,39 @@ const SkillMarker = Type.Object({
   source: Type.Union([Type.Literal('tool'), Type.Literal('command')]),
 })
 
+// 이 세션에서 컨텍스트를 가장 많이 차지한 도구들.
+// 곡선(ContextChart)이 "여기서 뛰었다"까지 말하고, 이 표가 "무엇 때문인지"를 말한다.
+//
+// 개별 응답이 아니라 도구별로 묶는다. 처음엔 큰 응답 10개를 그대로 내렸는데, 화면이
+// 늘 같은 도구 열 줄이었다(한 세션은 mcp__claude-in-chrome__computer 10개,
+// 다른 세션은 mcp__figma-dev__get_screenshot 10개). 지배적인 도구 하나가 목록을 채워서
+// "무엇이 컨텍스트를 먹었나"를 한 줄로도 못 읽는다. 묶으면 한 줄이 그 답이 되고,
+// maxBytes 가 "단일 응답 중 가장 큰 것"이라는 정보도 같이 남긴다.
+const ToolResultByTool = Type.Object({
+  tool: Type.String(),
+  count: Type.Integer(),
+  bytes: Type.Integer(),
+  maxBytes: Type.Integer(),
+})
+
+const ToolResultSummary = Type.Object({
+  total: Type.Integer(),
+  totalBytes: Type.Integer(),
+  byTool: Type.Array(ToolResultByTool),
+})
+
 const SessionDetail = Type.Object({
   session: Session,
   turns: Type.Array(TurnWithCost),
   // 시간순. 세션에서 스킬을 안 썼으면 빈 배열.
   skills: Type.Array(SkillMarker),
+  toolResults: ToolResultSummary,
   totalCostUsd: Nullable(Type.Number()),
 })
 
 const NotFound = Type.Object({ error: Type.String() })
+
+
 
 export function sessionRoutes(app: App) {
   // 세션 목록. 비용은 turns ⨝ model_prices 를 세션별로 SUM 한다.
@@ -146,11 +170,43 @@ export function sessionRoutes(app: App) {
         .where(eq(skillInvocations.sessionId, id))
         .orderBy(asc(skillInvocations.ts))
 
+      // 도구 응답: 합계와 큰 것 몇 개. 합계를 따로 내는 이유는 top 10 만으로는
+      // "이 세션이 도구 응답을 얼마나 실어 날랐나"를 알 수 없어서다.
+      const [toolAgg] = await db
+        .select({
+          total: count(toolResults.id),
+          totalBytes: sql<number>`coalesce(sum(${toolResults.bytes}), 0)::bigint`.mapWith(Number),
+        })
+        .from(toolResults)
+        .where(eq(toolResults.sessionId, id))
+
+      const byTool = await db
+        .select({
+          tool: toolResults.tool,
+          count: count(toolResults.id),
+          bytes: sql<number>`sum(${toolResults.bytes})::bigint`.mapWith(Number),
+          maxBytes: sql<number>`max(${toolResults.bytes})::int`.mapWith(Number),
+        })
+        .from(toolResults)
+        .where(eq(toolResults.sessionId, id))
+        .groupBy(toolResults.tool)
+        .orderBy(desc(sql`sum(${toolResults.bytes})`))
+
       const total = rows.reduce<number | null>(
         (acc, t) => (acc === null || t.costUsd === null ? null : acc + t.costUsd),
         0,
       )
-      return { session, turns: rows, skills, totalCostUsd: total }
+      return {
+        session,
+        turns: rows,
+        skills,
+        toolResults: {
+          total: toolAgg?.total ?? 0,
+          totalBytes: toolAgg?.totalBytes ?? 0,
+          byTool,
+        },
+        totalCostUsd: total,
+      }
     },
   )
 }

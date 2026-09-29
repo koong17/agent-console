@@ -13,7 +13,7 @@ import { homedir } from 'node:os'
 import { sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { readLines } from './lines.js'
-import { sessions, turns, skillInvocations, type TranscriptStats } from '../db/schema.js'
+import { sessions, turns, skillInvocations, toolResults, type TranscriptStats } from '../db/schema.js'
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
@@ -137,8 +137,18 @@ type Line = {
   }
 }
 
-type MessageContent =
-  string | Array<{ type: string; id?: string; name?: string; text?: string; input?: Record<string, unknown> }>
+type ContentBlock = {
+  type: string
+  id?: string
+  name?: string
+  text?: string
+  input?: Record<string, unknown>
+  // tool_result 블록. 이름은 없고 어떤 호출의 결과인지만 가리킨다.
+  tool_use_id?: string
+  content?: unknown
+}
+
+type MessageContent = string | ContentBlock[]
 
 // 사용자 메시지 본문에서 "/스킬이름 인자" 입력을 찾는다. Claude Code는 이를
 //   <command-name>/feature-plan</command-name> ... <command-args>TMS-1234</command-args>
@@ -166,6 +176,8 @@ export function emptyTranscriptStats(): TranscriptStats {
     filesEmpty: 0,
     typeCounts: {},
     unknownTypeLines: 0,
+    toolResults: 0,
+    toolResultsUnmatched: 0,
     assistantLines: 0,
     synthetic: 0,
     unusable: 0,
@@ -176,6 +188,7 @@ type Parsed = {
   session: typeof sessions.$inferInsert
   turns: Array<typeof turns.$inferInsert>
   skills: Array<typeof skillInvocations.$inferInsert>
+  tools: Array<typeof toolResults.$inferInsert>
 }
 
 // 파일 하나를 끝까지 읽어 넣을 행들을 메모리에 모은다.
@@ -189,6 +202,11 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
   // 같은 message.id가 여러 줄에 나오므로 Map으로 한 번만 담는다.
   const turnMap = new Map<string, typeof turns.$inferInsert>()
   const skills: Parsed['skills'] = []
+  const tools: Parsed['tools'] = []
+  // tool_result 줄에는 도구 이름이 없다. 이름은 앞선 assistant 줄의 tool_use 블록에 있고
+  // tool_use_id 로 이어진다. 파일을 순서대로 읽으므로 호출을 먼저 만나 여기 담아두고,
+  // 결과를 만났을 때 꺼내 쓴다. 전수 측정(2026-09-29)에서 짝이 다른 파일에 있는 경우는 0건이었다.
+  const toolNames = new Map<string, string>()
 
   for await (const raw of readLines(path)) {
     stats.lines++
@@ -226,6 +244,31 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
       if (ts < session.startedAt) session.startedAt = ts
       if (ts > session.lastSeenAt) session.lastSeenAt = ts
       if (line.gitBranch) session.gitBranch = line.gitBranch
+    }
+
+    // 도구 응답. 사용자 메시지 안에 tool_result 블록으로 들어온다(모델이 아니라 하네스가 채운다).
+    // 크기를 재는 이유는 컨텍스트 곡선이 뛰는 자리에 이름을 붙이기 위해서다.
+    // JSON.stringify 로 재는 건 "이 내용이 대화에 실릴 때의 대략적 부피"에 가장 가까운 값이라서다.
+    if (line.type === 'user' && Array.isArray(line.message?.content)) {
+      for (const b of line.message.content) {
+        if (b.type !== 'tool_result' || !b.tool_use_id) continue
+        stats.toolResults++
+        const tool = toolNames.get(b.tool_use_id)
+        if (!tool) {
+          // 짝을 못 찾았다. 평소 0이어야 한다 — 0이 아니면 파일 안에서 호출과 결과가
+          // 갈라졌거나 우리가 tool_use 를 못 읽고 있다는 뜻이다.
+          stats.toolResultsUnmatched++
+          continue
+        }
+        tools.push({
+          id: b.tool_use_id,
+          sessionId: line.sessionId!,
+          repo: session?.repo ?? null,
+          ts,
+          tool,
+          bytes: JSON.stringify(b.content ?? '').length,
+        })
+      }
     }
 
     // 사용자가 직접 친 "/스킬" 입력. 도구 호출이 아니라서 아래 tool_use 루프에는 안 잡힌다.
@@ -297,6 +340,8 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
     }
 
     for (const block of typeof m.content === 'string' ? [] : (m.content ?? [])) {
+      // 도구 이름을 id 로 기억해둔다. 뒤에 올 tool_result 가 이걸로 이름을 찾는다.
+      if (block.type === 'tool_use' && block.id && block.name) toolNames.set(block.id, block.name)
       if (block.type !== 'tool_use' || block.name !== 'Skill' || !block.id) continue
       const input = block.input ?? {}
       skills.push({
@@ -312,7 +357,7 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
   }
 
   if (!session) return null
-  return { session, turns: [...turnMap.values()], skills }
+  return { session, turns: [...turnMap.values()], skills, tools }
 }
 
 // INSERT 한 문장에 넣을 행 수. Postgres는 문장당 파라미터 65535개 제한이 있어서
@@ -395,6 +440,11 @@ async function ingestFile(path: string, stats: TranscriptStats) {
         .onConflictDoNothing()
         .returning({ id: skillInvocations.id })
       insertedSkills += rows.length
+    }
+
+    // 도구 응답은 한 번 쓰이면 안 바뀐다. 이미 있으면 건너뛴다.
+    for (const batch of chunks(parsed.tools)) {
+      await tx.insert(toolResults).values(batch).onConflictDoNothing()
     }
 
     return { turns: insertedTurns, turnsUpdated: updatedTurns, skills: insertedSkills }
