@@ -3,7 +3,7 @@ import type { App } from './app.js'
 import { DateTime, Nullable } from './schemas.js'
 import { and, count, desc, eq, inArray, lt, max, sql } from 'drizzle-orm'
 import { db } from './db/index.js'
-import { sessions, turns, skillInvocations, modelPrices, gateEvents } from './db/schema.js'
+import { sessions, turns, skillInvocations, modelPrices, gateEvents, toolResults } from './db/schema.js'
 import { totalCostUsd } from './cost.js'
 
 // 주어진 시각이 속한 주의 월요일(한국 시간)을 "YYYY-MM-DD 00:00Z" Date로 돌려준다.
@@ -81,6 +81,28 @@ const GATE_TRIGGER_SKILLS = [
   'code-reviewer',
   'product-design',
 ]
+
+// 도구 응답이 컨텍스트에 실어 나른 양. 세션 상세의 같은 표를 전체 범위로 넓힌 것이다.
+//
+// 왜 전체 관점이 따로 필요한가: 세션 하나만 보면 "이 세션은 figma 스크린샷이 91%"까지
+// 알 수 있지만, 그게 이번 한 번인지 늘 그런지는 모른다. 습관을 바꿀지 판단하려면
+// 여러 세션에 걸친 합이 필요하다.
+//
+// 비용(USD)은 내지 않는다. 도구 응답의 실제 비용은 크기 × 그 뒤로 남은 턴 수인데,
+// 바이트를 토큰으로 환산하는 비율이 이미지와 텍스트에서 다르고 남은 턴 수도 세션마다
+// 달라서, 지금 데이터로는 정직한 환산이 안 된다. 바이트끼리만 비교한다.
+const ToolUsage = Type.Object({
+  tool: Type.String(),
+  calls: Type.Integer(),
+  bytes: Type.Integer(),
+  // 호출 한 번의 평균과 최대. 총합만 보면 "자주 부르는 작은 도구"와
+  // "가끔 부르는 거대한 도구"가 구분되지 않는다.
+  avgBytes: Type.Integer(),
+  maxBytes: Type.Integer(),
+  // 몇 개 세션에 퍼져 있나. 1이면 한 번의 사고, 여럿이면 습관이다.
+  sessions: Type.Integer(),
+  lastAt: DateTime,
+})
 
 const SkillWeekly = Type.Object({
   weeks: Type.Array(Type.String({ description: '주 시작 월요일, YYYY-MM-DD, Asia/Seoul' })),
@@ -208,6 +230,25 @@ export function usageRoutes(app: App) {
   // 게이트 준수. 게이트가 안내를 넣은(nudged) 뒤 같은 세션에서 1시간 안에 suah-judge가
   // 호출됐으면 준수로 본다. 상관 서브쿼리(EXISTS)로 이벤트마다 확인한다.
   // 이벤트 수가 적어(하루 수 건) 지금은 이 방식이 가장 읽기 쉽다.
+  // 도구별 응답 크기. 세션 경계를 넘어 합친다.
+  app.get('/usage/tools', { schema: { response: { 200: Type.Array(ToolUsage) } } }, async () => {
+    return db
+      .select({
+        tool: toolResults.tool,
+        calls: count(),
+        bytes: sumInt(toolResults.bytes),
+        avgBytes: sql<number>`round(avg(${toolResults.bytes}))::int`.mapWith(Number),
+        maxBytes: sql<number>`max(${toolResults.bytes})::int`.mapWith(Number),
+        sessions: sql<number>`count(distinct ${toolResults.sessionId})::int`.mapWith(Number),
+        // group by tool 이라 그룹마다 행이 반드시 하나 이상 있다. max 가 null 일 수 없는데
+        // drizzle 의 max() 는 Date | null 로 잡으므로 여기서 사실을 적어 좁힌다.
+        lastAt: sql<Date>`max(${toolResults.ts})`,
+      })
+      .from(toolResults)
+      .groupBy(toolResults.tool)
+      .orderBy(desc(sumInt(toolResults.bytes)))
+  })
+
   app.get('/usage/gates', { schema: { response: { 200: GateUsage } } }, async () => {
     const complied = sql<boolean>`exists (
       select 1 from ${skillInvocations} si

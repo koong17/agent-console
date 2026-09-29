@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Nav } from '../nav'
 import { api, unwrapAsync, type ApiData } from '../server'
-import { fmtDay, fmtMinute, fmtNum, fmtUsd } from '../format'
+import { fmtDay, fmtMinute, fmtNum, fmtUsd, fmtBytes } from '../format'
 import { DailyChart } from './daily-chart'
 import { ErrorState } from '../error-state'
 
@@ -11,12 +11,14 @@ export default async function UsagePage() {
   let skills: ApiData<'/usage/skills/weekly'>
   let daily: ApiData<'/usage/daily'>
   let gates: ApiData<'/usage/gates'>
+  let tools: ApiData<'/usage/tools'>
   try {
-    ;[repos, skills, daily, gates] = await Promise.all([
+    ;[repos, skills, daily, gates, tools] = await Promise.all([
       unwrapAsync(api.GET('/usage/repos')),
       unwrapAsync(api.GET('/usage/skills/weekly', { params: { query: { weeks: 8 } } })),
       unwrapAsync(api.GET('/usage/daily', { params: { query: { days: 30 } } })),
       unwrapAsync(api.GET('/usage/gates')),
+      unwrapAsync(api.GET('/usage/tools')),
     ])
   } catch (err) {
     return <ErrorState title="usage" error={err} />
@@ -140,6 +142,51 @@ export default async function UsagePage() {
               </table>
             </div>
           </>
+        )}
+      </section>
+
+      <section>
+        <h2>tool results</h2>
+        {/* 세션 상세의 같은 표를 전체 범위로 넓힌 것. 세션 하나만 보면 "이번엔 figma가 91%"까지
+            알 수 있지만 그게 습관인지는 모른다. sessions 열이 그걸 답한다 — 1이면 사고, 여럿이면 습관. */}
+        <p className="summary">
+          도구 <strong>{tools.length}</strong>종 · 합계{' '}
+          <strong>{fmtBytes(tools.reduce((a, t) => a + t.bytes, 0))}</strong> · 크기는 바이트다(토큰 아님)
+        </p>
+        {tools.length === 0 ? (
+          <p className="state">아직 도구 응답 기록이 없어요.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>tool</th>
+                  <th className="num">calls</th>
+                  <th className="num">total</th>
+                  <th className="num">avg</th>
+                  <th className="num">max</th>
+                  <th className="num">sessions</th>
+                  <th className="bar-cell"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {tools.map((t) => (
+                  <tr key={t.tool}>
+                    <td className="mono">{t.tool}</td>
+                    <td className="num">{fmtNum(t.calls)}</td>
+                    <td className="num">{fmtBytes(t.bytes)}</td>
+                    <td className="num">{fmtBytes(t.avgBytes)}</td>
+                    <td className="num">{fmtBytes(t.maxBytes)}</td>
+                    <td className="num">{fmtNum(t.sessions)}</td>
+                    <td className="bar-cell">
+                      {/* 가장 큰 도구를 100%로 둔 상대 크기. */}
+                      <div className="bar" style={{ width: `${(t.bytes / tools[0]!.bytes) * 100}%` }} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

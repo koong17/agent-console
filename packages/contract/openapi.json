@@ -197,6 +197,58 @@
         }
       }
     },
+    "/usage/tools": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "tool",
+                      "calls",
+                      "bytes",
+                      "avgBytes",
+                      "maxBytes",
+                      "sessions",
+                      "lastAt"
+                    ],
+                    "properties": {
+                      "tool": {
+                        "type": "string"
+                      },
+                      "calls": {
+                        "type": "integer"
+                      },
+                      "bytes": {
+                        "type": "integer"
+                      },
+                      "avgBytes": {
+                        "type": "integer"
+                      },
+                      "maxBytes": {
+                        "type": "integer"
+                      },
+                      "sessions": {
+                        "type": "integer"
+                      },
+                      "lastAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/usage/gates": {
       "get": {
         "responses": {
