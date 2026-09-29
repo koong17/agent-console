@@ -1,4 +1,4 @@
-import type { IngestStats } from '../db/schema.js'
+import type { IngestStats, StoredIngestStats } from '../db/schema.js'
 import { ingestTranscripts, KNOWN_TYPES, type TranscriptSummary } from './transcripts.js'
 import { ingestEvents, type EventsSummary } from './events.js'
 
@@ -19,12 +19,14 @@ export async function ingestAll(): Promise<IngestSummary> {
 // 설명 안 되는 탈락의 합. 평소 0이어야 하는 숫자라 임계값이 필요 없다.
 // 예상된 탈락(synthetic, skillLines)은 일부러 뺐다 — 0이 아닌 게 정상이라
 // 합에 넣으면 "0이면 정상"이라는 성질이 깨진다.
-export function unexplained(s: IngestStats): number {
+export function unexplained(s: StoredIngestStats): number {
+  // 옛 실행 행에는 나중에 생긴 카운터가 없다. ?? 0 으로 읽어 합계가 NaN 이 되지 않게 한다.
   return (
     s.transcripts.badJson +
     s.transcripts.filesEmpty +
     s.transcripts.unusable +
     s.transcripts.unknownTypeLines +
+    (s.transcripts.toolResultsUnmatched ?? 0) +
     s.events.badJson +
     s.events.unknownType +
     s.events.incomplete
@@ -34,6 +36,6 @@ export function unexplained(s: IngestStats): number {
 // 경보가 울렸을 때 "무엇이" 처음 보는 모양인지 이름으로 알려준다.
 // 숫자만 보여주면 화면에서 DB로 넘어가야 원인을 알 수 있다.
 // KNOWN_TYPES 가 서버에만 있으므로 판정도 서버에서 한다.
-export function unknownTypes(s: IngestStats): string[] {
+export function unknownTypes(s: StoredIngestStats): string[] {
   return Object.keys(s.transcripts.typeCounts ?? {}).filter((t) => !KNOWN_TYPES.has(t))
 }

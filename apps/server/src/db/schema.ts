@@ -259,7 +259,24 @@ export type EventStats = {
   memoryDeny: number // type=memory-deny. 교정·선호를 프로젝트 메모리에 쓰려다 훅에 막힌 횟수 (예상됨)
 }
 
+// 파서가 만들어 내는 모양. 카운터가 전부 있다.
 export type IngestStats = { transcripts: TranscriptStats; events: EventStats }
+
+// DB 에서 읽을 때의 모양. 같지 않다.
+//
+// stats 는 jsonb 라 스키마 강제가 없고, 한 열 안에 여러 시점의 모양이 섞여 산다.
+// 카운터를 새로 만들면 그 전에 돌았던 행에는 그 키가 없다. 두 모양을 한 타입으로
+// 쓰면 읽는 쪽이 거짓말을 하거나(없는 값을 number 로 보거나) 쓰는 쪽이 전부
+// optional 이 되어 증가 코드가 깨진다. 그래서 갈라 둔다.
+//
+// 카운터를 추가할 때 여기 Partial 목록과 scheduler.ts 의 Type.Optional 을 같이 늘린다.
+type LaterTranscriptKeys = 'toolResults' | 'toolResultsUnmatched'
+type LaterEventKeys = 'memoryDeny'
+export type StoredIngestStats = {
+  transcripts: Omit<TranscriptStats, LaterTranscriptKeys> &
+    Partial<Pick<TranscriptStats, LaterTranscriptKeys>>
+  events: Omit<EventStats, LaterEventKeys> & Partial<Pick<EventStats, LaterEventKeys>>
+}
 
 export const ingestRuns = pgTable('ingest_runs', {
   id: serial('id').primaryKey(),
@@ -278,7 +295,7 @@ export const ingestRuns = pgTable('ingest_runs', {
   // 열을 열한 개 더 늘리지 않고 jsonb 하나에 둔다. 어떤 카운터가 실제로 드리프트를
   // 잡아내는지 아직 모르고, 카운터가 바뀔 때마다 스키마를 흔들고 싶지 않다.
   // 대신 API 응답 스키마(scheduler.ts)에서 필드 이름을 전부 못박아 계약은 유지한다.
-  stats: jsonb('stats').$type<IngestStats>(),
+  stats: jsonb('stats').$type<StoredIngestStats>(),
   error: text('error'),
 })
 

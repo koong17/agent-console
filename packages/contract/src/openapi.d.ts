@@ -606,6 +606,8 @@ export interface paths {
                                             [key: string]: number;
                                         };
                                         unknownTypeLines: number;
+                                        toolResults?: number;
+                                        toolResultsUnmatched?: number;
                                         assistantLines: number;
                                         synthetic: number;
                                         unusable: number;
@@ -616,7 +618,7 @@ export interface paths {
                                         skillLines: number;
                                         unknownType: number;
                                         incomplete: number;
-                                        memoryDeny: number;
+                                        memoryDeny?: number;
                                     };
                                 } | null;
                                 unexplained: number | null;
@@ -645,6 +647,8 @@ export interface paths {
                                             [key: string]: number;
                                         };
                                         unknownTypeLines: number;
+                                        toolResults?: number;
+                                        toolResultsUnmatched?: number;
                                         assistantLines: number;
                                         synthetic: number;
                                         unusable: number;
@@ -655,7 +659,7 @@ export interface paths {
                                         skillLines: number;
                                         unknownType: number;
                                         incomplete: number;
-                                        memoryDeny: number;
+                                        memoryDeny?: number;
                                     };
                                 } | null;
                                 unexplained: number | null;

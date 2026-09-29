@@ -1373,6 +1373,12 @@
                                         "unknownTypeLines": {
                                           "type": "integer"
                                         },
+                                        "toolResults": {
+                                          "type": "integer"
+                                        },
+                                        "toolResultsUnmatched": {
+                                          "type": "integer"
+                                        },
                                         "assistantLines": {
                                           "type": "integer"
                                         },
@@ -1391,8 +1397,7 @@
                                         "badJson",
                                         "skillLines",
                                         "unknownType",
-                                        "incomplete",
-                                        "memoryDeny"
+                                        "incomplete"
                                       ],
                                       "properties": {
                                         "lines": {
@@ -1639,6 +1644,12 @@
                                       "unknownTypeLines": {
                                         "type": "integer"
                                       },
+                                      "toolResults": {
+                                        "type": "integer"
+                                      },
+                                      "toolResultsUnmatched": {
+                                        "type": "integer"
+                                      },
                                       "assistantLines": {
                                         "type": "integer"
                                       },
@@ -1657,8 +1668,7 @@
                                       "badJson",
                                       "skillLines",
                                       "unknownType",
-                                      "incomplete",
-                                      "memoryDeny"
+                                      "incomplete"
                                     ],
                                     "properties": {
                                       "lines": {

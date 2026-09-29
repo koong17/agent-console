@@ -20,6 +20,12 @@ type Trigger = 'startup' | 'interval' | 'manual'
 
 // DB에는 jsonb 한 덩어리지만 계약에서는 필드를 전부 못박는다.
 // 그래야 웹이 카운터 이름을 오타 없이 쓰고, 카운터가 바뀌면 contract:check 가 잡는다.
+//
+// 나중에 생긴 카운터는 Optional 이다. stats 는 버전이 섞인 덩어리라서 — 이 라우트는
+// 최근 실행 10개를 돌려주는데, 카운터가 생기기 전에 돌았던 행에는 그 키가 없다.
+// 필수로 두면 옛 행 하나 때문에 응답 전체가 500 이 된다(2026-09-29 실제로 터졌다).
+// 새 실행이 10번 쌓이면 저절로 사라지는 종류라 더 위험하다 — 방금 짠 사람은 못 보고
+// 나중에 옛 행을 보는 사람만 본다. 카운터를 추가하면 여기도 Optional 로 넣는다.
 const IngestStatsSchema = Type.Object({
   transcripts: Type.Object({
     lines: Type.Integer(),
@@ -28,6 +34,8 @@ const IngestStatsSchema = Type.Object({
     // 키가 데이터에서 나오는 유일한 필드. 타입 이름을 미리 못 박을 수 없어서 Record 다.
     typeCounts: Type.Record(Type.String(), Type.Integer()),
     unknownTypeLines: Type.Integer(),
+    toolResults: Type.Optional(Type.Integer()),
+    toolResultsUnmatched: Type.Optional(Type.Integer()),
     assistantLines: Type.Integer(),
     synthetic: Type.Integer(),
     unusable: Type.Integer(),
@@ -38,7 +46,7 @@ const IngestStatsSchema = Type.Object({
     skillLines: Type.Integer(),
     unknownType: Type.Integer(),
     incomplete: Type.Integer(),
-    memoryDeny: Type.Integer(),
+    memoryDeny: Type.Optional(Type.Integer()),
   }),
 })
 
