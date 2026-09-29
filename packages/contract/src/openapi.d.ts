@@ -392,6 +392,12 @@ export interface paths {
                                 deadMultiplier: number;
                                 quietMultiplier: number;
                                 deadFloorDays: number;
+                                harnessSilentDays: number;
+                            };
+                            harness: {
+                                lastEventAt: string | null;
+                                silentActiveDays: number;
+                                alarm: boolean;
                             };
                             rules: {
                                 /** @description 스킬 이름, 또는 "gate:<trigger>" */
@@ -403,8 +409,8 @@ export interface paths {
                                 firstAt: string;
                                 /** Format: date-time */
                                 lastAt: string;
-                                silenceDays: number;
-                                medianGapDays: number | null;
+                                silenceActiveDays: number;
+                                medianGapActiveDays: number | null;
                             }[];
                         };
                     };

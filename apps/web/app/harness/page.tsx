@@ -15,8 +15,10 @@ const STATUS_LABEL: Record<Rule['status'], string> = {
   insufficient: '-',
 }
 
-const fmtDays = (d: number | null) =>
-  d === null ? '-' : d < 1 ? `${Math.round(d * 24)}h` : `${d.toFixed(1)}d`
+// 단위가 활동일이라 시간으로 환산하지 않는다. 활동일 0은 "같은 날 또 불렸다"는 뜻이고,
+// 그걸 "0.0h"로 쓰면 달력 시간으로 읽힌다. 중앙값은 분수가 나올 수 있어 한 자리만 남긴다.
+const fmtActiveDays = (d: number | null) =>
+  d === null ? '-' : d === 0 ? '같은 날' : Number.isInteger(d) ? `${d}일` : `${d.toFixed(1)}일`
 
 export default async function HarnessPage() {
   let report: Report
@@ -30,7 +32,7 @@ export default async function HarnessPage() {
     return <ErrorState title="harness" error={err} />
   }
 
-  const { thresholds: t, rules } = report
+  const { thresholds: t, rules, harness } = report
   const dead = rules.filter((r) => r.status === 'dead').length
   const quiet = rules.filter((r) => r.status === 'quiet').length
 
@@ -41,9 +43,20 @@ export default async function HarnessPage() {
       <p className="summary">
         규칙 <strong>{rules.length}</strong>개 · dead <strong>{dead}</strong> · quiet <strong>{quiet}</strong>
         <br />
-        dead = 침묵이 평소 간격의 {t.deadMultiplier}배(최소 {t.deadFloorDays}일)를 넘김 · quiet ={' '}
+        dead = 침묵이 평소 간격의 {t.deadMultiplier}배(최소 {t.deadFloorDays}활동일)를 넘김 · quiet ={' '}
         {t.quietMultiplier}배 · 호출 {t.minEvents}회 미만은 판정 안 함
+        <br />
+        단위는 달력 날짜가 아니라 <strong>활동일</strong> — Claude Code를 쓴 흔적이 있는 날. 쉰 날은 안 센다
       </p>
+      {/* 규칙별 판정이 활동일에 기대는 이상, 활동일 자체가 안 생기는 전면 장애는 여기가 본다.
+          일하고 있는데(turns 가 있는데) 하네스 이벤트가 0건인 날이 쌓이면 훅 쪽을 의심한다. */}
+      {harness.alarm && (
+        <p className="state-error">
+          하네스 이벤트가 <strong>{harness.silentActiveDays}</strong>활동일째 0건입니다. 마지막 기록{' '}
+          {harness.lastEventAt ? fmtDay(String(harness.lastEventAt)) : '없음'} · 훅이 안 울리고 있을 수
+          있어요. 아래 규칙별 판정은 그동안 멈춰 있는 것으로 봐야 합니다.
+        </p>
+      )}
       <section>
         <h2>brain</h2>
         <p className="summary">
@@ -129,8 +142,8 @@ export default async function HarnessPage() {
                     >
                       {STATUS_LABEL[r.status]}
                     </td>
-                    <td className="num">{fmtDays(r.silenceDays)}</td>
-                    <td className="num">{fmtDays(r.medianGapDays)}</td>
+                    <td className="num">{fmtActiveDays(r.silenceActiveDays)}</td>
+                    <td className="num">{fmtActiveDays(r.medianGapActiveDays)}</td>
                     <td className="num">{r.total}</td>
                     <td className="mono">{fmtDay(String(r.firstAt))}</td>
                     <td className="mono">{fmtDay(String(r.lastAt))}</td>

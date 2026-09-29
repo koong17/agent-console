@@ -691,6 +691,7 @@
                   "type": "object",
                   "required": [
                     "thresholds",
+                    "harness",
                     "rules"
                   ],
                   "properties": {
@@ -700,7 +701,8 @@
                         "minEvents",
                         "deadMultiplier",
                         "quietMultiplier",
-                        "deadFloorDays"
+                        "deadFloorDays",
+                        "harnessSilentDays"
                       ],
                       "properties": {
                         "minEvents": {
@@ -714,6 +716,36 @@
                         },
                         "deadFloorDays": {
                           "type": "integer"
+                        },
+                        "harnessSilentDays": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "harness": {
+                      "type": "object",
+                      "required": [
+                        "lastEventAt",
+                        "silentActiveDays",
+                        "alarm"
+                      ],
+                      "properties": {
+                        "lastEventAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "silentActiveDays": {
+                          "type": "integer"
+                        },
+                        "alarm": {
+                          "type": "boolean"
                         }
                       }
                     },
@@ -728,8 +760,8 @@
                           "total",
                           "firstAt",
                           "lastAt",
-                          "silenceDays",
-                          "medianGapDays"
+                          "silenceActiveDays",
+                          "medianGapActiveDays"
                         ],
                         "properties": {
                           "name": {
@@ -791,10 +823,10 @@
                             "type": "string",
                             "format": "date-time"
                           },
-                          "silenceDays": {
-                            "type": "number"
+                          "silenceActiveDays": {
+                            "type": "integer"
                           },
-                          "medianGapDays": {
+                          "medianGapActiveDays": {
                             "anyOf": [
                               {
                                 "type": "number",
