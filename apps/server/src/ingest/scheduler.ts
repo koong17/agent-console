@@ -13,8 +13,21 @@ import { ingestAll, unexplained, unknownTypes } from './index.js'
 // 그대로 찍힌다. 그게 눈에 띄게 커지는 순간이 작업을 별도 프로세스(큐)로 빼는 시점이다.
 
 const INTERVAL_MS = 60 * 60 * 1000 // 1시간
-// 정상 실행은 수 초다. 이보다 오래 running이면 끝을 기록하지 못한 채 죽은 것으로 본다.
-const STALE_MS = 10 * 60 * 1000 // 10분
+// running 인 채로 이만큼 지나면 끝을 기록하지 못하고 죽은 것으로 본다.
+//
+// 처음엔 10분이었고 주석에 "정상 실행은 수 초다"라고 적혀 있었다. 이 환경에서는 거짓이다.
+// 2026-09-29 측정(성공 실행 531건): p95 6.5초인데 최대 1048초(17.5분), 10분 초과가 10건.
+// 전부 interval 실행이고 새벽·유휴 시간대이며 넣은 행은 0이다 — 부하가 아니라 macOS 가
+// 백그라운드 프로세스를 조이는 것이다. 벽시계 시간은 프로세스 생존의 좋은 대리 지표가 아니다.
+//
+// 그래서 값을 두 조건 사이에서 고른다.
+//   관측된 정상 실행 최댓값(17.5분) 위   — 살아 있는 실행을 failed 로 찍지 않는다
+//   실행 주기(60분) 아래                  — 고아 행이 다음 실행 전에 정리된다
+// 30분이면 둘 다 만족하고, 30분을 넘긴 성공 실행은 531건 중 0건이다.
+//
+// 이래도 heuristic 이다. OS 가 30분 넘게 재우면 또 틀린다. 그 피해는 아래 run() 이
+// 성공 시 error 를 null 로 덮어 스스로 교정하는 것으로 막는다.
+const STALE_MS = 30 * 60 * 1000 // 30분
 
 type Trigger = 'startup' | 'interval' | 'manual'
 
@@ -128,6 +141,11 @@ export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
           gates: s.gates,
           decisions: s.decisions,
           stats: s.stats,
+          // 성공했으면 error 를 지운다. 안 지우면 stale 정리나 재시작 정리가 먼저
+          // 찍어둔 메시지가 남아 "done 인데 오류가 달린 행"이 된다(2026-09-29 실제 1건).
+          // 이 한 줄이 스스로 교정하는 부분이다 — 살아 있는 실행을 잘못 failed 로 찍어도
+          // 완료되는 순간 status 와 error 가 함께 정상으로 돌아온다.
+          error: null,
         })
         .where(eq(ingestRuns.id, id))
       app.log.info({ trigger, ...s, unexplained: unexplained(s.stats) }, 'ingest done')
