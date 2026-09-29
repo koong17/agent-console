@@ -43,7 +43,14 @@ export type EventsSummary = { gates: number; decisions: number; stats: EventStat
 export async function ingestEvents(): Promise<EventsSummary> {
   const gateRows: Array<typeof gateEvents.$inferInsert> = []
   const decisionRows: Array<typeof decisions.$inferInsert> = []
-  const stats: EventStats = { lines: 0, badJson: 0, skillLines: 0, unknownType: 0, incomplete: 0, memoryDeny: 0 }
+  const stats: EventStats = {
+    lines: 0,
+    badJson: 0,
+    skillLines: 0,
+    unknownType: 0,
+    incomplete: 0,
+    memoryDeny: 0,
+  }
 
   try {
     // 훅이 남기는 decision 줄에는 질문 원문이 그대로 들어간다. 거기 U+2028 이
@@ -104,21 +111,43 @@ export async function ingestEvents(): Promise<EventsSummary> {
     throw err
   }
 
-  // insert(...).values([])는 drizzle이 에러를 내므로 빈 배열은 건너뛴다.
-  const gates =
-    gateRows.length === 0
-      ? 0
-      : (await db.insert(gateEvents).values(gateRows).onConflictDoNothing().returning({ id: gateEvents.id }))
-          .length
-  const decided =
-    decisionRows.length === 0
-      ? 0
-      : (
-          await db
-            .insert(decisions)
-            .values(decisionRows)
-            .onConflictDoNothing()
-            .returning({ id: decisions.id })
-        ).length
-  return { gates, decisions: decided, stats }
+  // 파일 하나 = 트랜잭션 하나. transcripts.ts 와 같은 단위다.
+  //
+  // 여기서 트랜잭션이 사는 것과 못 사는 것을 구분해 둔다. gate_events 와 decisions 는
+  // 서로 참조하지 않으므로, 중간에 죽어도 화면에 보이는 반쪽 상태는 생기지 않는다.
+  // 게다가 파일을 매번 처음부터 읽고 키가 자연 키라, 빠진 행은 다음 실행이 알아서 넣는다.
+  // 그러니 데이터 정합성만 보면 트랜잭션이 없어도 결국 수렴한다.
+  //
+  // 그래도 씌우는 이유는 실행 기록 쪽이다. 중간에 죽으면 ingest_runs 는 그 실행을
+  // failed 로 적는데, 트랜잭션이 없으면 "failed 인데 절반은 들어간" 행이 남는다.
+  // failed = 아무것도 안 들어감 이라는 성질은 transcripts 쪽에 이미 있고, 한쪽만
+  // 다르면 나중에 실행 기록을 근거로 뭔가를 판단할 때 그 예외를 기억해야 한다.
+  //
+  // 값 개수 제한(문장당 파라미터 65535)에는 아직 안 닿는다. decisions 가 열 9개라
+  // 약 7천 행이 한계인데 지금 160 행이다. 닿기 전에 이 파일 머리 주석대로
+  // "마지막 읽은 오프셋 기억" 방식으로 먼저 바뀔 것이다.
+  return db.transaction(async (tx) => {
+    // insert(...).values([])는 drizzle이 에러를 내므로 빈 배열은 건너뛴다.
+    const gates =
+      gateRows.length === 0
+        ? 0
+        : (
+            await tx
+              .insert(gateEvents)
+              .values(gateRows)
+              .onConflictDoNothing()
+              .returning({ id: gateEvents.id })
+          ).length
+    const decided =
+      decisionRows.length === 0
+        ? 0
+        : (
+            await tx
+              .insert(decisions)
+              .values(decisionRows)
+              .onConflictDoNothing()
+              .returning({ id: decisions.id })
+          ).length
+    return { gates, decisions: decided, stats }
+  })
 }
