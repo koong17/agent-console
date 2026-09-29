@@ -42,6 +42,10 @@ const TurnWithCost = Type.Object({
   cacheCreationTokens: Type.Integer(),
   outputTokens: Type.Integer(),
   costUsd: Nullable(Type.Number()),
+  // 서브에이전트(Agent 도구로 띄운 별도 대화)의 응답인지. 화면이 이걸 알아야 하는 이유:
+  // 서브에이전트는 자기만의 컨텍스트 창을 쓴다. 메인 대화와 한 줄에 그리면 창 두 개가
+  // 번갈아 찍혀 톱니가 되고, 그게 압축으로 오독된다.
+  sidechain: Type.Boolean(),
 })
 
 // 이 세션에서 불린 스킬 하나. source: 'tool' = 모델이 Skill 도구로 호출,
@@ -122,6 +126,7 @@ export function sessionRoutes(app: App) {
           cacheReadTokens: turns.cacheReadTokens,
           cacheCreationTokens: turns.cacheCreationTokens,
           outputTokens: turns.outputTokens,
+          sidechain: turns.sidechain,
           costUsd: turnCostUsd.mapWith((v) => (v === null ? null : Number(v))),
         })
         .from(turns)

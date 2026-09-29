@@ -4,6 +4,7 @@ import { Nav } from '../../nav'
 import { api, callApi, unwrap, type ApiData } from '../../server'
 import { fmtDay, fmtMinute, fmtNum, fmtTime, fmtUsd } from '../../format'
 import { ErrorState } from '../../error-state'
+import { ContextChart } from './context-chart'
 
 // Next의 notFound()가 던지는 에러인지 구분한다. digest 필드가 'NEXT_HTTP_ERROR_FALLBACK;404' 로 시작한다.
 function isNextNotFound(err: unknown): boolean {
@@ -36,8 +37,8 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   // 보여주면 07-31 16:52 다음에 08-03 13:24 가 와서 순서가 뒤집혀 보인다. 여러 날에 걸칠 때만
   // 시각 앞에 날짜(MM-DD)를 붙인다. 하루짜리면 DESIGN.md 대로 시각만.
   const spansDays =
-    new Set([...turns.map((t) => t.ts), ...skills.map((s) => s.ts)].map((iso) => fmtDay(String(iso))))
-      .size > 1
+    new Set([...turns.map((t) => t.ts), ...skills.map((s) => s.ts)].map((iso) => fmtDay(String(iso)))).size >
+    1
   const stamp = (iso: string) => (spansDays ? `${fmtDay(iso).slice(5)} ${fmtTime(iso)}` : fmtTime(iso))
 
   return (
@@ -56,6 +57,16 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
         응답 <strong>{turns.length}</strong>개 · 스킬 <strong>{skills.length}</strong>개 · API 환산 비용{' '}
         <strong>{fmtUsd(totalCostUsd)}</strong>
       </p>
+
+      <section>
+        <h2>context</h2>
+        {/* turns 표보다 위에 둔다. "얼마나 들고 다녔나"가 "각 턴이 얼마였나"보다 먼저 읽혀야
+            운반 비용이 어디서 붙었는지 짚을 수 있다. */}
+        <p className="summary">
+          한 열이 한 턴 · 높이는 그 턴에 읽은 입력 전체(새 입력 + 캐시 읽기 + 캐시 쓰기)
+        </p>
+        <ContextChart turns={turns} stamp={stamp} />
+      </section>
 
       <section>
         <h2>skills</h2>

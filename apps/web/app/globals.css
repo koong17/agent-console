@@ -261,6 +261,18 @@ tr.is-error td {
 .chart-col.is-zero .bar {
   background: var(--hairline);
 }
+/* 턴 단위처럼 열이 수백 개인 차트. 4px gap이 700열이면 2800px라 폭을 넘긴다.
+   붙여 그리면 막대 하나하나가 아니라 곡선의 모양으로 읽힌다. */
+.chart.is-dense {
+  gap: 0;
+}
+.chart.is-dense .chart-col {
+  min-width: 1px;
+}
+/* 서브에이전트 턴. 메인 대화와 다른 컨텍스트 창이라 같은 높이여도 다른 이야기다. */
+.chart-col.is-sub .bar {
+  background: var(--link-soft);
+}
 .chart-col:hover .bar {
   background: var(--link-deep);
 }
@@ -279,6 +291,12 @@ tr.is-error td {
   position: absolute;
   top: 0;
   right: 0;
+  /* 증가하는 곡선은 오른쪽 끝이 가장 높아서 라벨이 막대와 겹친다. 바탕색만으로는
+     안 되는데, 이 span 이 DOM 상 막대들보다 앞 형제라 막대가 위에 그려지기 때문이다.
+     z-index 로 올리고 바탕을 깐다. */
+  z-index: 1;
+  background: var(--canvas);
+  padding: 0 2px;
   color: var(--mute);
   font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
   font-size: 12px;

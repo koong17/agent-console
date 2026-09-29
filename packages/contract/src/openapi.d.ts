@@ -330,6 +330,7 @@ export interface paths {
                                 cacheCreationTokens: number;
                                 outputTokens: number;
                                 costUsd: number | null;
+                                sidechain: boolean;
                             }[];
                             skills: {
                                 id: string;

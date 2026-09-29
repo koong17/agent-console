@@ -189,5 +189,7 @@ Vercel 마케팅 사이트는 성공 색을 blue로 겸용한다. 우리는 상�
 | `.chart-col` | `.chart` 안 열 | 하루 한 열. 0인 날은 `.is-zero` 추가 |
 | `.chart-label` | `.chart-col` 안 | x 라벨(`MM-DD`), 월요일에만 |
 | `.chart-max` | `.chart` 안 | 우상단 최댓값 caption |
+| `.chart.is-dense` | `.chart` 에 함께 | 열이 수백 개인 차트. gap 0, 열 최소폭 1px. 막대가 아니라 곡선으로 읽힌다 |
+| `.chart-col.is-sub` | `.chart-col` 에 함께 | 서브에이전트 턴. 별도 컨텍스트 창. `--link-soft` |
 
 `h1`, `h2`, `table`, `th`, `td`, `code`, `a`는 태그 자체에 스타일이 있어 클래스가 필요 없다.
