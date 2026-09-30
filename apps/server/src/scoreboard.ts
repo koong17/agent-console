@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { DateTime } from './schemas.js'
 import { db } from './db/index.js'
-import { decisionKinds, decisions, messageIntents, messages, shadowPredictions, toolResults } from './db/schema.js'
+import { correctionReplays, decisionKinds, decisions, messageIntents, messages, shadowPredictions, toolResults } from './db/schema.js'
 import { strip } from './jobs/shadow-predict.js'
 
 // 대체 로드맵의 점수판(/scoreboard). 브레인이 수아를 얼마나 대신하고 있나를 숫자로 본다.
@@ -33,6 +33,32 @@ const Interventions = Type.Object({
   total: Type.Object({ activeHours: Type.Integer(), counts: IntentCounts }),
   byDay: Type.Array(Type.Object({ day: Type.String(), activeHours: Type.Integer(), counts: IntentCounts })),
 })
+
+const Corrections = Type.Object({
+  total: Type.Integer({ description: '교정으로 분류된 메시지 수' }),
+  replayed: Type.Integer({ description: '그중 되짚기가 끝난 수' }),
+  byCause: Type.Object({
+    missing: Type.Integer(),
+    ignored: Type.Integer(),
+    wrong: Type.Integer(),
+    'not-judgment': Type.Integer(),
+  }),
+  // ignored/wrong 에서 가리킨 규칙. 많이 나오는 규칙이 가장 먼저 손볼 곳이다.
+  byRule: Type.Array(Type.Object({ rule: Type.String(), ignored: Type.Integer(), wrong: Type.Integer() })),
+  recent: Type.Array(
+    Type.Object({
+      messageId: Type.String(),
+      ts: DateTime,
+      text: Type.String(),
+      cause: Type.String(),
+      rule: Type.Union([Type.String(), Type.Null()]),
+      inboxDraft: Type.Union([Type.String(), Type.Null()]),
+      reason: Type.String(),
+    }),
+  ),
+})
+// 되짚은 교정 목록 길이. inbox 초안을 고르는 자리라 한 번에 읽을 만큼만.
+const RECENT_CORRECTIONS = 30
 
 const CALIBRATION_BUCKETS = 5
 // 틀린 예측 목록의 길이. 읽을 것이지 훑을 것이 아니라서 짧게.
@@ -252,6 +278,59 @@ export function scoreboardRoutes(app: App) {
       typed,
       total,
       byDay: [...days.values()].sort((a, b) => b.day.localeCompare(a.day)),
+    }
+  })
+
+  // 교정 되짚기. pnpm jobs correction-replay 가 채운다(message-intent 가 먼저 돌아야 대상이 생긴다).
+  app.get('/scoreboard/corrections', { schema: { response: { 200: Corrections } } }, async () => {
+    const [agg] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        replayed: sql<number>`count(${correctionReplays.messageId})::int`,
+        missing: sql<number>`count(*) filter (where ${correctionReplays.cause} = 'missing')::int`,
+        ignored: sql<number>`count(*) filter (where ${correctionReplays.cause} = 'ignored')::int`,
+        wrong: sql<number>`count(*) filter (where ${correctionReplays.cause} = 'wrong')::int`,
+        notJudgment: sql<number>`count(*) filter (where ${correctionReplays.cause} = 'not-judgment')::int`,
+      })
+      .from(messageIntents)
+      .leftJoin(correctionReplays, sql`${correctionReplays.messageId} = ${messageIntents.messageId}`)
+      .where(sql`${messageIntents.intent} = 'correction'`)
+    const byRule = await db
+      .select({
+        rule: sql<string>`${correctionReplays.rule}`,
+        ignored: sql<number>`count(*) filter (where ${correctionReplays.cause} = 'ignored')::int`,
+        wrong: sql<number>`count(*) filter (where ${correctionReplays.cause} = 'wrong')::int`,
+      })
+      .from(correctionReplays)
+      .where(sql`${correctionReplays.rule} is not null`)
+      .groupBy(correctionReplays.rule)
+      .orderBy(sql`count(*) desc`)
+    const recent = await db
+      .select({
+        messageId: correctionReplays.messageId,
+        ts: messages.ts,
+        text: messages.text,
+        cause: correctionReplays.cause,
+        rule: correctionReplays.rule,
+        inboxDraft: correctionReplays.inboxDraft,
+        reason: correctionReplays.reason,
+      })
+      .from(correctionReplays)
+      .innerJoin(messages, sql`${messages.id} = ${correctionReplays.messageId}`)
+      .orderBy(sql`${messages.ts} desc`)
+      .limit(RECENT_CORRECTIONS)
+    return {
+      total: Number(agg?.total ?? 0),
+      replayed: Number(agg?.replayed ?? 0),
+      byCause: {
+        missing: Number(agg?.missing ?? 0),
+        ignored: Number(agg?.ignored ?? 0),
+        wrong: Number(agg?.wrong ?? 0),
+        'not-judgment': Number(agg?.notJudgment ?? 0),
+      },
+      byRule: byRule.map((r) => ({ rule: r.rule, ignored: Number(r.ignored), wrong: Number(r.wrong) })),
+      // 긴 붙여넣기가 표를 덮지 않게 앞부분만. 전문은 세션 화면에 있다.
+      recent: recent.map((r) => ({ ...r, text: r.text.slice(0, 300) })),
     }
   })
 }

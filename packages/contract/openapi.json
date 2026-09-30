@@ -1723,6 +1723,137 @@
         }
       }
     },
+    "/scoreboard/corrections": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "replayed",
+                    "byCause",
+                    "byRule",
+                    "recent"
+                  ],
+                  "properties": {
+                    "total": {
+                      "type": "integer",
+                      "description": "교정으로 분류된 메시지 수"
+                    },
+                    "replayed": {
+                      "type": "integer",
+                      "description": "그중 되짚기가 끝난 수"
+                    },
+                    "byCause": {
+                      "type": "object",
+                      "required": [
+                        "missing",
+                        "ignored",
+                        "wrong",
+                        "not-judgment"
+                      ],
+                      "properties": {
+                        "missing": {
+                          "type": "integer"
+                        },
+                        "ignored": {
+                          "type": "integer"
+                        },
+                        "wrong": {
+                          "type": "integer"
+                        },
+                        "not-judgment": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "byRule": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "rule",
+                          "ignored",
+                          "wrong"
+                        ],
+                        "properties": {
+                          "rule": {
+                            "type": "string"
+                          },
+                          "ignored": {
+                            "type": "integer"
+                          },
+                          "wrong": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "recent": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "ts",
+                          "text",
+                          "cause",
+                          "rule",
+                          "inboxDraft",
+                          "reason"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "ts": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "cause": {
+                            "type": "string"
+                          },
+                          "rule": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "inboxDraft": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {

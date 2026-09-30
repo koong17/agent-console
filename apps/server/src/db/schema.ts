@@ -298,6 +298,27 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// 교정 되짚기. 교정 하나를 그 시점의 브레인에 비춰 "규칙이 없었나, 있는데 안 따랐나, 규칙이 틀렸나"를 가른다.
+//
+// 셋을 가르는 이유: 고치는 곳이 다르다. missing 이면 규칙을 새로 쓰고, ignored 면 규칙이 읽히는
+// 경로(훅, 스킬 로드 순서)를 고치고, wrong 이면 규칙 자체를 고친다. 한 숫자로 합치면 무엇을 할지 모른다.
+// not-judgment 는 오타·도구 고장처럼 판단 기준과 무관한 교정이다 — 브레인 탓으로 세지 않는다.
+export const correctionReplays = pgTable('correction_replays', {
+  messageId: text('message_id')
+    .primaryKey()
+    .references(() => messages.id),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+  brainCommit: text('brain_commit').notNull(),
+  cause: text('cause', { enum: ['missing', 'ignored', 'wrong', 'not-judgment'] }).notNull(),
+  // 관련 규칙 id(BI-10 등). missing 이거나 not-judgment 면 null.
+  rule: text('rule'),
+  // inbox.md 에 붙일 한 줄 초안(영어, 회사 고유명 일반화). 자동으로 쓰지 않는다 — 수아가 고른다.
+  inboxDraft: text('inbox_draft'),
+  reason: text('reason').notNull(),
+})
+
 // 사람 메시지 하나가 무슨 개입이었나. 로드맵 2단계의 재료다.
 //
 // 교정(correction)이 북극성이다. 에이전트가 틀려서 수아가 바로잡은 횟수 — 브레인이 수아를

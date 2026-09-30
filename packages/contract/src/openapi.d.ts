@@ -807,6 +807,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scoreboard/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description 교정으로 분류된 메시지 수 */
+                            total: number;
+                            /** @description 그중 되짚기가 끝난 수 */
+                            replayed: number;
+                            byCause: {
+                                missing: number;
+                                ignored: number;
+                                wrong: number;
+                                "not-judgment": number;
+                            };
+                            byRule: {
+                                rule: string;
+                                ignored: number;
+                                wrong: number;
+                            }[];
+                            recent: {
+                                messageId: string;
+                                /** Format: date-time */
+                                ts: string;
+                                text: string;
+                                cause: string;
+                                rule: string | null;
+                                inboxDraft: string | null;
+                                reason: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest/status": {
         parameters: {
             query?: never;

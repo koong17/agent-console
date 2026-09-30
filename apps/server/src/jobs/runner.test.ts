@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { decisions, decisionKinds, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
+import { correctionReplays, decisions, decisionKinds, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
 import { claim, drain, enqueue, recoverStale } from './runner.js'
 import { KIND, enqueueUnclassified, questionKindHandler } from './question-kind.js'
 
@@ -72,7 +72,7 @@ before(async () => {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
+    sql`truncate ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
   )
   await rm(join(dir, 'calls'), { recursive: true, force: true })
   await mkdir(join(dir, 'calls'))
@@ -207,7 +207,7 @@ describe('shadow-predict', () => {
     brain = await mkdtemp(join(tmpdir(), 'agent-console-brain-'))
     await mkdir(join(brain, 'identity'))
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: brain })
-    await commitAt('OLD RULES', '2026-09-01T00:00:00Z')
+    await commitAt('OLD RULES\n- `BI-10` ask before commit', '2026-09-01T00:00:00Z')
     await commitAt('NEW RULES', '2026-09-20T00:00:00Z')
     // BRAIN_DIR 은 모듈이 읽힐 때 정해진다. 그래서 환경변수를 바꾼 뒤에 불러온다.
     process.env.BRAIN_DIR = brain
@@ -254,6 +254,37 @@ describe('shadow-predict', () => {
     assert.equal(p!.predicted, '예')
     assert.equal(p!.correct, false) // 수아는 아니오
     assert.equal(Number(p!.confidence), 0.8)
+  })
+
+  // 교정 되짚기도 그 시점의 브레인을 쓴다. 교정으로 분류된 메시지만 대상이다.
+  test('교정만 되짚고, 그 시점의 sense.md 로 원인을 묻는다', async () => {
+    await db.execute(sql`truncate ${messages}, ${sessions} cascade`)
+    await db.insert(sessions).values({ id: 's1', cwd: '/r', repo: 'r', startedAt: new Date(), lastSeenAt: new Date() })
+    await db.insert(messages).values([
+      { id: 'a1', sessionId: 's1', ts: new Date('2026-09-10T00:00:00Z'), kind: 'assistant', text: '커밋했어요' },
+      { id: 'c1', sessionId: 's1', ts: new Date('2026-09-10T00:01:00Z'), kind: 'typed', text: '왜 물어보지도 않고 커밋해', replyTo: 'a1' },
+      { id: 'ok1', sessionId: 's1', ts: new Date('2026-09-10T00:02:00Z'), kind: 'typed', text: '좋아' },
+    ])
+    const [job] = await db.insert(llmJobs).values({ kind: 'message-intent', subject: 'seed', status: 'done', input: {} }).returning({ id: llmJobs.id })
+    await db.insert(messageIntents).values([
+      { messageId: 'c1', jobId: job!.id, intent: 'correction', confidence: '0.9' },
+      { messageId: 'ok1', jobId: job!.id, intent: 'approval', confidence: '0.9' },
+    ])
+    await replies([ok({ cause: 'ignored', rule: 'BI-10', inboxDraft: 'x', reason: '승인 규칙을 안 따름' })])
+
+    const cr = await import('./correction-replay.js')
+    assert.equal(await cr.enqueueCorrections(), 1)
+    const s = await drain(cr.correctionReplayHandler)
+
+    assert.equal(s.done, 1)
+    const args = JSON.parse(await readFile(join(dir, 'calls', '0.json'), 'utf8')) as string[]
+    assert.match(args[args.indexOf('--system-prompt') + 1]!, /OLD RULES/)
+    assert.match(args.at(-1)!, /커밋했어요[\s\S]*왜 물어보지도 않고 커밋해/) // 맥락 다음에 교정
+    // rule 은 그 커밋의 규칙 id 로 묶인다. 테스트 브레인의 OLD RULES 에는 BI-10 이 있다.
+    const schema = JSON.parse(args[args.indexOf('--json-schema') + 1]!)
+    assert.deepEqual(schema.properties.rule.enum, ['', 'BI-10'])
+    const [row] = await db.select().from(correctionReplays)
+    assert.deepEqual([row!.messageId, row!.cause, row!.rule], ['c1', 'ignored', 'BI-10'])
   })
 
   test('선택지에 없는 답은 오답이 아니라 실패로 남는다', async () => {

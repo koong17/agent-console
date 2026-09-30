@@ -6,6 +6,7 @@ import { ErrorState } from '../error-state'
 type Minutes = ApiData<'/scoreboard/minutes'>
 type Shadow = ApiData<'/scoreboard/shadow'>
 type Interventions = ApiData<'/scoreboard/interventions'>
+type Corrections = ApiData<'/scoreboard/corrections'>
 type Counts = Interventions['total']['counts']
 
 const sum = (c: Counts) => Object.values(c).reduce((a, b) => a + b, 0)
@@ -21,11 +22,13 @@ export default async function ScoreboardPage() {
   let minutes: Minutes
   let shadow: Shadow
   let iv: Interventions
+  let cr: Corrections
   try {
-    ;[minutes, shadow, iv] = await Promise.all([
+    ;[minutes, shadow, iv, cr] = await Promise.all([
       unwrapAsync(api.GET('/scoreboard/minutes')),
       unwrapAsync(api.GET('/scoreboard/shadow')),
       unwrapAsync(api.GET('/scoreboard/interventions')),
+      unwrapAsync(api.GET('/scoreboard/corrections')),
     ])
   } catch (err) {
     return <ErrorState title="scoreboard" error={err} />
@@ -87,6 +90,74 @@ export default async function ScoreboardPage() {
                       <td className="num">{d.counts.approval}</td>
                       <td className="num">{d.counts['new-request']}</td>
                       <td className="num">{d.counts.other}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section>
+        <h2>correction replay</h2>
+        {cr.replayed === 0 ? (
+          <p className="state">
+            아직 되짚은 교정이 없어요. <span className="mono">pnpm jobs correction-replay</span> 를 실행하세요.
+          </p>
+        ) : (
+          <>
+            <p className="summary">
+              교정 <strong>{cr.total}</strong>건 중 <strong>{cr.replayed}</strong>건 되짚음 · 규칙 없음{' '}
+              <strong>{cr.byCause.missing}</strong> · 규칙 무시 <strong>{cr.byCause.ignored}</strong> · 규칙이 틀림{' '}
+              <strong>{cr.byCause.wrong}</strong> · 판단 문제 아님 <strong>{cr.byCause['not-judgment']}</strong>
+              <br />
+              그 시각의 sense.md 에 비춰 원인을 갈라요. 규칙 없음은 새 규칙을, 무시는 규칙이 읽히는 경로를, 틀림은 규칙
+              자체를 고칠 곳이에요. inbox 초안은 자동으로 쓰지 않아요.
+            </p>
+            {cr.byRule.length > 0 && (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>rule</th>
+                      <th className="num">ignored</th>
+                      <th className="num">wrong</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cr.byRule.map((r) => (
+                      <tr key={r.rule}>
+                        <td className="mono">{r.rule}</td>
+                        <td className="num">{r.ignored}</td>
+                        <td className="num">{r.wrong}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>time</th>
+                    <th>cause</th>
+                    <th>rule</th>
+                    <th>correction</th>
+                    <th>reason</th>
+                    <th>inbox draft</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cr.recent.map((c) => (
+                    <tr key={c.messageId}>
+                      <td className="mono">{fmtMinute(String(c.ts))}</td>
+                      <td>{c.cause}</td>
+                      <td className="mono">{c.rule ?? '-'}</td>
+                      <td className="wrap">{c.text}</td>
+                      <td className="wrap">{c.reason}</td>
+                      <td className="wrap">{c.inboxDraft ?? '-'}</td>
                     </tr>
                   ))}
                 </tbody>
