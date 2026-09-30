@@ -37,8 +37,8 @@ const DecisionsReport = Type.Object({
     // 창 안의 결정 수와, 그중 추천이 없었던 수
     total: Type.Integer(),
     missing: Type.Integer(),
-    // missing 가운데 복수 선택 질문. 추천 하나가 어울리지 않는 질문이라 따로 센다.
-    // 경보는 이걸 뺀 수로 켠다(missing - multiSelect > 0).
+    // missing 가운데 복수 선택 질문. 경보에서 빼지 않는다 — 2026-09-30 수아가 정한 규칙으로
+    // 복수 선택도 추천을 (여러 개) 단다. 따로 세는 건 어느 쪽 누락이 많은지 보려고다.
     multiSelect: Type.Integer(),
     // 0 이 아니면 켠다. 규칙이 "항상 하나"라서 임계값이 필요 없다.
     alarm: Type.Boolean(),
@@ -104,7 +104,7 @@ export function decisionRoutes(app: App) {
         total: Number(agg?.windowTotal ?? 0),
         missing: Number(agg?.windowMissing ?? 0),
         multiSelect: Number(agg?.windowMissingMulti ?? 0),
-        alarm: Number(agg?.windowMissing ?? 0) - Number(agg?.windowMissingMulti ?? 0) > 0,
+        alarm: Number(agg?.windowMissing ?? 0) > 0,
       },
       items,
     }

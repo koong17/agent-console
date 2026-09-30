@@ -210,10 +210,16 @@ export const decisions = pgTable(
     // 화면은 항상 "전체를 한 줄로" 보여주기만 하며 라벨 단위로 조회하지 않는다.
     options: jsonb('options').$type<string[]>().notNull(),
     // 라벨에 "(Recommended)"/"(추천)"이 붙은 선택지. 에이전트가 추천을 안 했으면 null.
+    // 복수 선택에서 추천이 여럿이면 첫 번째다. 전부는 recommendedAll 에 있다.
     recommended: text('recommended'),
+    // 표시가 붙은 선택지 전부. 단일 선택이면 0~1개, 복수 선택이면 여러 개일 수 있다.
+    // 2026-09-30 수아가 정한 규칙: 복수 선택은 추천을 여러 개 달 수 있고, 채점은
+    // "추천한 것들을 전부 골랐나"로 한다(agreed). 더 고른 건 상관없다.
+    recommendedAll: jsonb('recommended_all').$type<string[]>(),
     // 실제 고른 값. 다중 선택은 콤마로 이어진 문자열, "Other" 직접 입력은 선택지에 없는 문장.
     chosen: text('chosen'),
-    // chosen == recommended. null은 "판정 불가"(추천이 없거나 답을 못 읽음)다. false("반대함")와 다르다.
+    // 단일 선택: chosen == recommended. 복수 선택: recommendedAll 이 전부 chosen 안에 있다.
+    // null은 "판정 불가"(추천이 없거나 답을 못 읽음)다. false("반대함")와 다르다.
     agreed: boolean('agreed'),
     // chosen을 못 읽었을 때만 응답 원문. 응답 형식이 바뀌었는지 나중에 추적하는 용도.
     rawResponse: jsonb('raw_response'),

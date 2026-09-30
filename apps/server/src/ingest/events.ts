@@ -38,6 +38,8 @@ type EventLine = {
   raw_response?: unknown
   // 2026-09-30 부터 남는다. 그 전 줄에는 없다.
   multi_select?: boolean
+  // 2026-09-30 부터. 복수 선택은 추천이 여럿일 수 있다.
+  recommended_all?: string[]
 }
 
 export type EventsSummary = { gates: number; decisions: number; stats: EventStats }
@@ -99,6 +101,7 @@ export async function ingestEvents(): Promise<EventsSummary> {
             agreed: e.agreed ?? null,
             rawResponse: e.raw_response ?? null,
             multiSelect: e.multi_select ?? null,
+            recommendedAll: e.recommended_all ?? null,
           })
         else stats.incomplete++
       } else if (e.type === 'memory-deny') {

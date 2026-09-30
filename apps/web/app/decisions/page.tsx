@@ -45,8 +45,8 @@ export default async function DecisionsPage() {
             <p className="summary">
               <span className="status-warning">
                 최근 {miss.windowDays}일 질문 <strong>{miss.total}</strong>건 중 <strong>{miss.missing}</strong>건에
-                추천이 없어요{miss.multiSelect > 0 && <> (그중 복수 선택 {miss.multiSelect}건은 경보에서 뺐어요)</>}.
-                추천 없는 질문은 예측 점수에 못 들어가요. 표의 recommended 가 - 인 행이에요.
+                추천이 없어요{miss.multiSelect > 0 && <> (그중 복수 선택 {miss.multiSelect}건)</>}. 추천 없는 질문은 예측
+                점수에 못 들어가요. 복수 선택은 추천을 여러 개 달 수 있고, 추천한 것들을 전부 골랐으면 동의로 쳐요.
               </span>
             </p>
           )}
