@@ -7,6 +7,7 @@ import { pool } from '../db/index.js'
 import { drain, recoverStale, retryFailed, type Handler } from './runner.js'
 import * as questionKind from './question-kind.js'
 import * as shadowPredict from './shadow-predict.js'
+import { exportKinds, KINDS_FILE } from './export-kinds.js'
 
 // 종류마다 handler 와 "넣을 대상 고르기" 하나씩.
 const KINDS: Record<string, { handler: Handler<never, never>; enqueue: (limit?: number) => Promise<number> }> = {
@@ -31,8 +32,10 @@ try {
     console.log(
       `recovered=${recovered} retried=${retried} queued+${queued} done=${s.done} failed=${s.failed} cost=$${s.costUsd.toFixed(4)}`,
     )
-    if (kind === questionKind.KIND)
+    if (kind === questionKind.KIND) {
       for (const r of await questionKind.kindSummary()) console.log(`${String(r.n).padStart(4)}  ${r.kind}`)
+      console.log(`exported ${await exportKinds()} → ${KINDS_FILE}`)
+    }
   }
 } finally {
   await pool.end()
