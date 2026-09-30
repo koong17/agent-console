@@ -22,7 +22,7 @@ const EVENTS_PATH = join(homedir(), '.claude', 'harness-events.jsonl')
 // type으로 갈라 읽으므로 타입별 필드는 optional로 둔다.
 type EventLine = {
   ts: number
-  type: 'skill' | 'gate' | 'decision' | 'memory-deny' | 'slack-voice-gate'
+  type: 'skill' | 'gate' | 'decision' | 'memory-deny' | 'slack-voice-gate' | 'vr-reminder'
   session_id: string
   cwd?: string
   // skill, gate
@@ -55,6 +55,7 @@ export async function ingestEvents(): Promise<EventsSummary> {
     incomplete: 0,
     memoryDeny: 0,
     slackVoiceGate: 0,
+    vrReminder: 0,
   }
 
   try {
@@ -111,6 +112,10 @@ export async function ingestEvents(): Promise<EventsSummary> {
         // 남의 채널에 수아 이름으로 글을 보내기 전 말투 확인 훅(2026-09-30, suah-brain 쪽에서 추가).
         // 적재는 건수만. 판정(asked/allowed/denied)별 집계가 필요해지면 표를 만든다.
         stats.slackVoiceGate++
+      } else if (e.type === 'vr-reminder') {
+        // 완료 주장 순간의 검증 규칙 훅(scripts/hooks/vr-reminder.sh). 지금은 건수만. 판정별(would-block/
+        // disclosed/blocked) 비율을 보려면 표가 필요하다 — log 모드로 며칠 쌓은 뒤 정한다.
+        stats.vrReminder++
       } else {
         // 훅이 새 type 을 남기기 시작했는데 우리가 아직 안 읽고 있다는 뜻이다.
         stats.unknownType++
