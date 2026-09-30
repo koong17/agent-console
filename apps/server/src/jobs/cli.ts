@@ -7,12 +7,14 @@ import { pool } from '../db/index.js'
 import { drain, recoverStale, retryFailed, type Handler } from './runner.js'
 import * as questionKind from './question-kind.js'
 import * as shadowPredict from './shadow-predict.js'
+import * as messageIntent from './message-intent.js'
 import { exportKinds, KINDS_FILE } from './export-kinds.js'
 
 // 종류마다 handler 와 "넣을 대상 고르기" 하나씩.
 const KINDS: Record<string, { handler: Handler<never, never>; enqueue: (limit?: number) => Promise<number> }> = {
   [questionKind.KIND]: { handler: questionKind.questionKindHandler as Handler<never, never>, enqueue: questionKind.enqueueUnclassified },
   [shadowPredict.KIND]: { handler: shadowPredict.shadowPredictHandler as Handler<never, never>, enqueue: shadowPredict.enqueueEligible },
+  [messageIntent.KIND]: { handler: messageIntent.messageIntentHandler as Handler<never, never>, enqueue: messageIntent.enqueueUnclassified },
 }
 
 const [kind, ...rest] = process.argv.slice(2)

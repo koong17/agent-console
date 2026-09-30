@@ -18,6 +18,9 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 export type Handler<I, O> = {
   kind: string
   model: string
+  // 동시에 몇 개까지 돌려도 되나. 기본 1. 작업끼리 결과가 서로에게 기대면(question-kind) 1이어야 하고,
+  // 서로 독립이면(한 메시지씩 따로 분류) 올려도 된다. 올려도 안전한 이유는 claim 의 SKIP LOCKED 다.
+  concurrency?: number
   // 답의 모양. 함수면 작업마다 만든다 — 선택지가 작업마다 다른 경우 enum 으로 묶으려고.
   jsonSchema: object | ((input: I) => object)
   // 실행 시점에 프롬프트를 만든다. 넣을 때 만들지 않는 이유: 프롬프트가 그 순간의 DB 상태
@@ -131,21 +134,29 @@ export async function runJob<I, O>(handler: Handler<I, O>, job: LlmJob) {
 
 export type DrainSummary = { done: number; failed: number; costUsd: number }
 
-// 대기열이 빌 때까지(또는 limit 까지) 하나씩 돌린다.
+// 대기열이 빌 때까지(또는 limit 까지) 돌린다. handler.concurrency 개의 일꾼이 각자 claim 을 반복한다.
 //
-// 동시에 여러 개를 돌리지 않는다. 느려서가 아니라 결과가 달라져서다. question-kind 는
-// 앞 작업이 만든 종류 목록을 보고 다음 작업이 분류한다. 둘을 동시에 돌리면 둘 다 "아직 없는
-// 종류"를 보고 같은 뜻의 종류를 다른 이름으로 하나씩 만든다. 순서가 결과의 일부인 작업이다.
+// 기본은 한 번에 하나다. 느려서가 아니라 결과가 달라져서다. question-kind 는 앞 작업이 만든
+// 종류 목록을 보고 다음 작업이 분류한다. 둘을 동시에 돌리면 둘 다 "아직 없는 종류"를 보고
+// 같은 뜻의 종류를 다른 이름으로 하나씩 만든다. 순서가 결과의 일부인 작업이다.
+//
+// 일꾼 여럿이 같은 작업을 집지 않는 건 claim 이 보장한다. 여기서 나누는 건 limit 하나뿐이다 —
+// started 는 한 스레드(이벤트 루프)에서만 바뀌므로 경합이 없다. 비교와 증가 사이에 await 가 없다.
 export async function drain<I, O>(handler: Handler<I, O>, { limit = Infinity } = {}): Promise<DrainSummary> {
   const summary: DrainSummary = { done: 0, failed: 0, costUsd: 0 }
-  for (let n = 0; n < limit; n++) {
-    const job = await claim(handler.kind)
-    if (!job) break
-    const r = await runJob(handler, job)
-    if (r.ok) {
-      summary.done++
-      summary.costUsd += r.costUsd
-    } else summary.failed++
+  let started = 0
+  const worker = async () => {
+    while (started < limit) {
+      started++
+      const job = await claim(handler.kind)
+      if (!job) return
+      const r = await runJob(handler, job)
+      if (r.ok) {
+        summary.done++
+        summary.costUsd += r.costUsd
+      } else summary.failed++
+    }
   }
+  await Promise.all(Array.from({ length: handler.concurrency ?? 1 }, worker))
   return summary
 }

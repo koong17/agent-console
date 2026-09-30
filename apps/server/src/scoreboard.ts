@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { DateTime } from './schemas.js'
 import { db } from './db/index.js'
-import { decisionKinds, decisions, messages, shadowPredictions, toolResults } from './db/schema.js'
+import { decisionKinds, decisions, messageIntents, messages, shadowPredictions, toolResults } from './db/schema.js'
 import { strip } from './jobs/shadow-predict.js'
 
 // 대체 로드맵의 점수판(/scoreboard). 브레인이 수아를 얼마나 대신하고 있나를 숫자로 본다.
@@ -21,6 +21,18 @@ import { strip } from './jobs/shadow-predict.js'
 // 도구를 더 부르고 끝난 턴이면 실제 멈춘 시각보다 이르게 잡혀 간격이 길어진다.
 
 const DAYS = 30
+
+const INTENTS = ['correction', 'answer', 'redirect', 'approval', 'new-request', 'other'] as const
+const IntentCounts = Type.Object(Object.fromEntries(INTENTS.map((i) => [i, Type.Integer()])) as Record<(typeof INTENTS)[number], ReturnType<typeof Type.Integer>>)
+
+const Interventions = Type.Object({
+  days: Type.Integer(),
+  // 분류가 끝난 메시지 / 전체 typed 메시지. 분류가 덜 됐으면 아래 비율은 일부로만 낸 값이다.
+  classified: Type.Integer(),
+  typed: Type.Integer(),
+  total: Type.Object({ activeHours: Type.Integer(), counts: IntentCounts }),
+  byDay: Type.Array(Type.Object({ day: Type.String(), activeHours: Type.Integer(), counts: IntentCounts })),
+})
 
 const CALIBRATION_BUCKETS = 5
 // 틀린 예측 목록의 길이. 읽을 것이지 훑을 것이 아니라서 짧게.
@@ -189,6 +201,57 @@ export function scoreboardRoutes(app: App) {
           reason: r.reason,
           kind: r.kind,
         })),
+    }
+  })
+
+  // 개입. 북극성은 활동 시간당 교정 수다.
+  //
+  // "세션 시간"이 아니라 "활동 시간"인 이유: 세션은 며칠씩 열려 있고(재개), 시작~마지막 줄 사이의
+  // 대부분은 자리를 비운 시간이다. 수아가 메시지를 한 번이라도 친 시(hour)만 센다. 한 시간 안에
+  // 메시지 하나를 쳐도 한 시간이라 짧게 들른 날이 과대평가되지만, 기준이 날마다 같아서 추세 비교는 된다.
+  app.get('/scoreboard/interventions', { schema: { response: { 200: Interventions } } }, async () => {
+    const result = await db.execute<{ day: string | null; intent: string | null; n: number }>(sql`
+      with typed as (
+        select m.ts, mi.intent from ${messages} m
+        left join ${messageIntents} mi on mi.message_id = m.id
+        where m.kind = 'typed' and m.ts > now() - make_interval(days => ${DAYS})
+      )
+      select to_char(ts::date, 'YYYY-MM-DD') as day, intent, count(*)::int as n
+      from typed
+      group by grouping sets ((ts::date, intent), (intent))
+    `)
+    // 활동 시간은 분류와 무관하게 센다. 위 문장에 끼우면 intent 별 줄마다 같은 값이 반복된다.
+    const hours = await db.execute<{ day: string | null; hours: number }>(sql`
+      select to_char(ts::date, 'YYYY-MM-DD') as day, count(distinct date_trunc('hour', ts))::int as hours
+      from ${messages}
+      where kind = 'typed' and ts > now() - make_interval(days => ${DAYS})
+      group by grouping sets ((ts::date), ())
+    `)
+    const zero = () => Object.fromEntries(INTENTS.map((i) => [i, 0])) as Record<(typeof INTENTS)[number], number>
+    const total = { activeHours: 0, counts: zero() }
+    const days = new Map<string, { day: string; activeHours: number; counts: ReturnType<typeof zero> }>()
+    for (const h of hours.rows) {
+      if (h.day === null) total.activeHours = Number(h.hours)
+      else days.set(h.day, { day: h.day, activeHours: Number(h.hours), counts: zero() })
+    }
+    let classified = 0
+    let typed = 0
+    for (const r of result.rows) {
+      const n = Number(r.n)
+      if (r.day === null) {
+        typed += n
+        if (r.intent) classified += n
+      }
+      if (!r.intent) continue
+      const target = r.day === null ? total : days.get(r.day)
+      if (target) target.counts[r.intent as (typeof INTENTS)[number]] = n
+    }
+    return {
+      days: DAYS,
+      classified,
+      typed,
+      total,
+      byDay: [...days.values()].sort((a, b) => b.day.localeCompare(a.day)),
     }
   })
 }

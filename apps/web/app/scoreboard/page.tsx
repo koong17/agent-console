@@ -5,6 +5,12 @@ import { ErrorState } from '../error-state'
 
 type Minutes = ApiData<'/scoreboard/minutes'>
 type Shadow = ApiData<'/scoreboard/shadow'>
+type Interventions = ApiData<'/scoreboard/interventions'>
+type Counts = Interventions['total']['counts']
+
+const sum = (c: Counts) => Object.values(c).reduce((a, b) => a + b, 0)
+// 활동 시간당 교정. 소수 둘째 자리 — 하루 몇 건 / 몇 시간이라 한 자리로는 날마다 차이가 안 보인다.
+const perHour = (n: number, h: number) => (h ? (n / h).toFixed(2) : '-')
 
 // 비율은 정수 퍼센트. 표본이 수십~백여 건이라 소수점은 가짜 정밀도다(DESIGN.md).
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '-')
@@ -14,10 +20,12 @@ const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '-'
 export default async function ScoreboardPage() {
   let minutes: Minutes
   let shadow: Shadow
+  let iv: Interventions
   try {
-    ;[minutes, shadow] = await Promise.all([
+    ;[minutes, shadow, iv] = await Promise.all([
       unwrapAsync(api.GET('/scoreboard/minutes')),
       unwrapAsync(api.GET('/scoreboard/shadow')),
+      unwrapAsync(api.GET('/scoreboard/interventions')),
     ])
   } catch (err) {
     return <ErrorState title="scoreboard" error={err} />
@@ -29,6 +37,65 @@ export default async function ScoreboardPage() {
     <main>
       <Nav />
       <h1>scoreboard</h1>
+      <section>
+        <h2>interventions</h2>
+        {iv.classified === 0 ? (
+          <p className="state">
+            최근 {iv.days}일 메시지가 아직 분류되지 않았어요. <span className="mono">pnpm jobs message-intent</span> 를
+            실행하세요.
+          </p>
+        ) : (
+          <>
+            <p className="summary">
+              최근 {iv.days}일 교정 <strong>{iv.total.counts.correction}</strong>건 · 활동 시간당{' '}
+              <strong>{perHour(iv.total.counts.correction, iv.total.activeHours)}</strong> · 분류된 메시지 100개당{' '}
+              <strong>{sum(iv.total.counts) ? ((iv.total.counts.correction / sum(iv.total.counts)) * 100).toFixed(1) : '-'}</strong>
+              {iv.classified < iv.typed && (
+                <>
+                  {' '}
+                  · <span className="status-warning">분류 {iv.classified}/{iv.typed} — 아직 일부로 낸 값</span>
+                </>
+              )}
+              <br />
+              교정 = 에이전트가 틀려서 수아가 바로잡은 메시지. 브레인이 수아를 대신한다면 줄어야 하는 숫자예요. 활동
+              시간은 메시지를 한 번이라도 친 시(hour)만 세요.
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>day</th>
+                    <th className="num">active h</th>
+                    <th className="num">correction</th>
+                    <th className="num">per h</th>
+                    <th className="num">answer</th>
+                    <th className="num">redirect</th>
+                    <th className="num">approval</th>
+                    <th className="num">new</th>
+                    <th className="num">other</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {iv.byDay.map((d) => (
+                    <tr key={d.day}>
+                      <td className="mono">{d.day}</td>
+                      <td className="num">{d.activeHours}</td>
+                      <td className="num">{d.counts.correction}</td>
+                      <td className="num">{perHour(d.counts.correction, d.activeHours)}</td>
+                      <td className="num">{d.counts.answer}</td>
+                      <td className="num">{d.counts.redirect}</td>
+                      <td className="num">{d.counts.approval}</td>
+                      <td className="num">{d.counts['new-request']}</td>
+                      <td className="num">{d.counts.other}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
       <section>
         <h2>blind prediction</h2>
         {shadow.n === 0 ? (

@@ -1596,6 +1596,133 @@
         }
       }
     },
+    "/scoreboard/interventions": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "days",
+                    "classified",
+                    "typed",
+                    "total",
+                    "byDay"
+                  ],
+                  "properties": {
+                    "days": {
+                      "type": "integer"
+                    },
+                    "classified": {
+                      "type": "integer"
+                    },
+                    "typed": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "object",
+                      "required": [
+                        "activeHours",
+                        "counts"
+                      ],
+                      "properties": {
+                        "activeHours": {
+                          "type": "integer"
+                        },
+                        "counts": {
+                          "type": "object",
+                          "required": [
+                            "correction",
+                            "answer",
+                            "redirect",
+                            "approval",
+                            "new-request",
+                            "other"
+                          ],
+                          "properties": {
+                            "correction": {
+                              "type": "integer"
+                            },
+                            "answer": {
+                              "type": "integer"
+                            },
+                            "redirect": {
+                              "type": "integer"
+                            },
+                            "approval": {
+                              "type": "integer"
+                            },
+                            "new-request": {
+                              "type": "integer"
+                            },
+                            "other": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "byDay": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "day",
+                          "activeHours",
+                          "counts"
+                        ],
+                        "properties": {
+                          "day": {
+                            "type": "string"
+                          },
+                          "activeHours": {
+                            "type": "integer"
+                          },
+                          "counts": {
+                            "type": "object",
+                            "required": [
+                              "correction",
+                              "answer",
+                              "redirect",
+                              "approval",
+                              "new-request",
+                              "other"
+                            ],
+                            "properties": {
+                              "correction": {
+                                "type": "integer"
+                              },
+                              "answer": {
+                                "type": "integer"
+                              },
+                              "redirect": {
+                                "type": "integer"
+                              },
+                              "approval": {
+                                "type": "integer"
+                              },
+                              "new-request": {
+                                "type": "integer"
+                              },
+                              "other": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {

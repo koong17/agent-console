@@ -6,12 +6,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { decisions, decisionKinds, llmJobs, questionKinds, shadowPredictions } from '../db/schema.js'
+import { decisions, decisionKinds, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
 import { claim, drain, enqueue, recoverStale } from './runner.js'
 import { KIND, enqueueUnclassified, questionKindHandler } from './question-kind.js'
 
-// 작업 종류가 달라도 같은 표(llm_jobs, decisions)를 비우므로 한 파일에 둔다.
-// node --test 는 파일마다 별도 프로세스로 동시에 돌려서, 파일을 나누면 서로의 행을 지운다.
+// 테스트 파일들이 같은 테스트 DB 의 표를 비운다(이 파일은 llm_jobs·decisions·messages,
+// ingest-file.test.ts 는 sessions·messages). node --test 는 기본으로 파일마다 별도 프로세스를
+// 동시에 띄우므로, 그대로 두면 한 파일의 truncate 가 다른 파일의 행을 테스트 도중에 지운다.
+// 그래서 package.json 의 test 스크립트가 --test-concurrency=1 로 파일을 하나씩 돌린다.
 
 // 진짜 claude 를 부르지 않는다. 대신 PATH 맨 앞에 가짜 `claude` 실행 파일을 둔다.
 //
@@ -70,7 +72,7 @@ before(async () => {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
+    sql`truncate ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
   )
   await rm(join(dir, 'calls'), { recursive: true, force: true })
   await mkdir(join(dir, 'calls'))
@@ -265,5 +267,56 @@ describe('shadow-predict', () => {
     assert.equal((await db.select().from(shadowPredictions)).length, 0)
     const [job] = await db.select().from(llmJobs)
     assert.match(job!.error!, /선택지에 없는 답/)
+  })
+})
+
+describe('message-intent', () => {
+  let mi: typeof import('./message-intent.js')
+  before(async () => {
+    mi = await import('./message-intent.js')
+  })
+
+  // 메시지 25개 = 묶음 2개(20 + 5). 일꾼 여럿이 돌아도 묶음마다 한 번씩만 부른다.
+  test('묶어서 분류하고, 동시에 돌려도 묶음마다 한 번씩만 부른다', async () => {
+    await db.execute(sql`truncate ${messages}, ${sessions} cascade`)
+    await db.insert(sessions).values({ id: 's1', cwd: '/r', repo: 'r', startedAt: new Date(), lastSeenAt: new Date() })
+    await db.insert(messages).values({ id: 'a1', sessionId: 's1', ts: new Date('2026-09-01T00:00:00Z'), kind: 'assistant', text: '다 지웠어요' })
+    const ids = Array.from({ length: 25 }, (_, i) => `u${String(i).padStart(2, '0')}`)
+    for (const [i, id] of ids.entries())
+      await db.insert(messages).values({
+        id,
+        sessionId: 's1',
+        ts: new Date(Date.UTC(2026, 8, 1, 0, i + 1)),
+        kind: 'typed',
+        text: `메시지 ${i}`,
+        replyTo: i === 0 ? 'a1' : null,
+      })
+    const answer = (xs: string[]) => ok({ items: xs.map((id) => ({ id, intent: 'correction', confidence: 0.9 })) })
+    await replies([answer(ids.slice(0, 20)), answer(ids.slice(20))])
+
+    assert.equal(await mi.enqueueUnclassified(), 2)
+    assert.equal(await mi.enqueueUnclassified(), 0) // 대기 중인 묶음에 든 메시지는 다시 안 묶는다
+    const s = await drain(mi.messageIntentHandler)
+
+    assert.equal(s.done, 2)
+    assert.equal((await readdir(join(dir, 'calls'))).length, 2)
+    assert.equal((await db.select().from(messageIntents)).length, 25)
+    // 직전 에이전트 글이 맥락으로 들어갔다(u00 만 replyTo 가 있다)
+    assert.equal((await prompts()).filter((p) => p.includes('다 지웠어요')).length, 1)
+  })
+
+  // 한 건이라도 빠지면 묶음 전체가 실패한다. 일부만 넣으면 빠진 메시지를 다시 넣을 길이 없다.
+  test('답에서 메시지가 빠지면 묶음 전체가 실패한다', async () => {
+    await db.execute(sql`truncate ${messages}, ${sessions} cascade`)
+    await db.insert(sessions).values({ id: 's1', cwd: '/r', repo: 'r', startedAt: new Date(), lastSeenAt: new Date() })
+    for (const id of ['x1', 'x2'])
+      await db.insert(messages).values({ id, sessionId: 's1', ts: new Date(), kind: 'typed', text: id })
+    await replies([ok({ items: [{ id: 'x1', intent: 'approval', confidence: 0.9 }] })])
+
+    await mi.enqueueUnclassified()
+    const s = await drain(mi.messageIntentHandler)
+
+    assert.equal(s.failed, 1)
+    assert.equal((await db.select().from(messageIntents)).length, 0)
   })
 })

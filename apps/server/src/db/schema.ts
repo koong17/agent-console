@@ -298,6 +298,24 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// 사람 메시지 하나가 무슨 개입이었나. 로드맵 2단계의 재료다.
+//
+// 교정(correction)이 북극성이다. 에이전트가 틀려서 수아가 바로잡은 횟수 — 브레인이 수아를
+// 대신한다면 이 숫자가 줄어야 한다. 나머지 분류는 교정을 다른 것과 섞지 않으려고 있다.
+// "좋아, 근데 이것도" 는 승인일까 방향 전환일까 — 경계가 흐린 메시지가 있어서 확신도 같이 둔다.
+export const messageIntents = pgTable('message_intents', {
+  messageId: text('message_id')
+    .primaryKey()
+    .references(() => messages.id),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+  intent: text('intent', {
+    enum: ['correction', 'answer', 'redirect', 'approval', 'new-request', 'other'],
+  }).notNull(),
+  confidence: numeric('confidence', { precision: 4, scale: 3 }).notNull(),
+})
+
 // 블라인드 재예측. 과거 결정 하나를 "그 시점의 브레인"에게 추천 표시를 지운 채 다시 고르게 한 결과.
 //
 // 왜 필요한가: 지금 예측 점수(추천이 수아 답과 맞은 비율)는 닻이 내려 있다. 수아는 추천을 보고
