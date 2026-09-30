@@ -327,6 +327,22 @@ export const evalDrafts = pgTable('eval_drafts', {
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   // accept 로 쓴 파일의 경로(브레인 레포 기준).
   path: text('path'),
+  // 규칙 없음 초안의 주제(draftThemes.name). 같은 새 규칙 후보끼리 묶어 한 번에 보려고 둔다.
+  // 규칙 무시 초안은 규칙 id 가 이미 묶음 역할을 해서 비어 있다.
+  theme: text('theme'),
+})
+
+// 규칙 없음 초안의 주제. 2026-09-30 초안이 208개(규칙 없음 134)라 하나씩 훑을 수 없어서,
+// 수아가 "규칙 없음을 주제로 묶기"를 골랐다. 주제 하나 = 새 규칙 후보 하나.
+// 초안 전체를 한 번에 보고 묶는다(작업 하나). 나눠 묶으면 같은 주제가 이름만 다르게 여러 번 생긴다.
+export const draftThemes = pgTable('draft_themes', {
+  name: text('name').primaryKey(),
+  description: text('description').notNull(),
+  // 주제를 대표하는 초안. 화면은 이것만 펼쳐 두고 나머지는 접는다.
+  representative: text('representative').notNull(),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
 })
 
 // 답 정책. 같은 질문 종류 안의 답들을 "같은 판단"끼리 묶은 이름.

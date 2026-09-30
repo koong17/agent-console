@@ -11,6 +11,7 @@ import * as messageIntent from './message-intent.js'
 import * as correctionReplay from './correction-replay.js'
 import * as answerPolicy from './answer-policy.js'
 import * as evalDraft from './eval-draft.js'
+import * as draftTheme from './draft-theme.js'
 import { exportKinds, KINDS_FILE } from './export-kinds.js'
 
 // 종류마다 handler 와 "넣을 대상 고르기" 하나씩.
@@ -21,6 +22,7 @@ const KINDS: Record<string, { handler: Handler<never, never>; enqueue: (limit?: 
   [correctionReplay.KIND]: { handler: correctionReplay.correctionReplayHandler as Handler<never, never>, enqueue: correctionReplay.enqueueCorrections },
   [answerPolicy.KIND]: { handler: answerPolicy.answerPolicyHandler as Handler<never, never>, enqueue: answerPolicy.enqueueKinds },
   [evalDraft.KIND]: { handler: evalDraft.evalDraftHandler as Handler<never, never>, enqueue: evalDraft.enqueueReplays },
+  [draftTheme.KIND]: { handler: draftTheme.draftThemeHandler as Handler<never, never>, enqueue: draftTheme.enqueueThemes },
 }
 
 const [kind, ...rest] = process.argv.slice(2)

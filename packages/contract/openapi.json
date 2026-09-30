@@ -2130,7 +2130,8 @@
                       "body",
                       "status",
                       "decidedAt",
-                      "path"
+                      "path",
+                      "theme"
                     ],
                     "properties": {
                       "messageId": {
@@ -2203,6 +2204,59 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "theme": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/evals/themes": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "description",
+                      "representative",
+                      "count",
+                      "pending"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "representative": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "type": "integer"
+                      },
+                      "pending": {
+                        "type": "integer"
                       }
                     }
                   }

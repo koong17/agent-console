@@ -4,7 +4,7 @@ import { join, relative } from 'node:path'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { db } from './db/index.js'
-import { correctionReplays, evalDrafts, messages } from './db/schema.js'
+import { correctionReplays, draftThemes, evalDrafts, messages } from './db/schema.js'
 import { DateTime, Nullable } from './schemas.js'
 import { BRAIN_DIR } from './brain.js'
 import { CASES_DIR } from './jobs/eval-draft.js'
@@ -30,6 +30,16 @@ const Draft = Type.Object({
   status: Type.Union([Type.Literal('pending'), Type.Literal('accepted'), Type.Literal('rejected')]),
   decidedAt: Nullable(DateTime),
   path: Nullable(Type.String()),
+  theme: Nullable(Type.String()),
+})
+
+// 규칙 없음 초안의 주제. 주제 하나 = 새 규칙 후보 하나. count 가 크면 그 규칙이 여러 번 필요했다는 뜻이다.
+const Theme = Type.Object({
+  name: Type.String(),
+  description: Type.String(),
+  representative: Type.String(),
+  count: Type.Integer(),
+  pending: Type.Integer(),
 })
 
 const Decided = Type.Object({ status: Type.String(), path: Nullable(Type.String()) })
@@ -51,6 +61,7 @@ export function evalRoutes(app: App) {
         status: evalDrafts.status,
         decidedAt: evalDrafts.decidedAt,
         path: evalDrafts.path,
+        theme: evalDrafts.theme,
       })
       .from(evalDrafts)
       .innerJoin(messages, eq(messages.id, evalDrafts.messageId))
@@ -58,6 +69,22 @@ export function evalRoutes(app: App) {
       // 결정할 것(pending)을 먼저, 그 안에서는 최근 교정부터.
       .orderBy(sql`${evalDrafts.status} <> 'pending'`, desc(messages.ts))
     return rows.map((r) => ({ ...r, correction: r.correction.slice(0, 500) }))
+  })
+
+  app.get('/evals/themes', { schema: { response: { 200: Type.Array(Theme) } } }, async () => {
+    const rows = await db
+      .select({
+        name: draftThemes.name,
+        description: draftThemes.description,
+        representative: draftThemes.representative,
+        count: sql<number>`count(${evalDrafts.messageId})::int`,
+        pending: sql<number>`count(*) filter (where ${evalDrafts.status} = 'pending')::int`,
+      })
+      .from(draftThemes)
+      .leftJoin(evalDrafts, eq(evalDrafts.theme, draftThemes.name))
+      .groupBy(draftThemes.name)
+      .orderBy(sql`count(${evalDrafts.messageId}) desc`, draftThemes.name)
+    return rows.map((r) => ({ ...r, count: Number(r.count), pending: Number(r.pending) }))
   })
 
   app.post(

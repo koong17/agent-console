@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { answerPolicies, correctionReplays, decisionPolicies, decisions, decisionKinds, evalDrafts, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
+import { answerPolicies, correctionReplays, decisionPolicies, decisions, decisionKinds, draftThemes, evalDrafts, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
 import { claim, drain, enqueue, recoverStale } from './runner.js'
 import { KIND, enqueueUnclassified, questionKindHandler } from './question-kind.js'
 
@@ -72,7 +72,7 @@ before(async () => {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${evalDrafts}, ${decisionPolicies}, ${answerPolicies}, ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
+    sql`truncate ${draftThemes}, ${evalDrafts}, ${decisionPolicies}, ${answerPolicies}, ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
   )
   await rm(join(dir, 'calls'), { recursive: true, force: true })
   await mkdir(join(dir, 'calls'))
@@ -476,5 +476,58 @@ describe('answer-policy', () => {
     assert.equal(s.failed, 1)
     assert.equal((await db.select().from(answerPolicies)).length, 0)
     assert.equal((await db.select().from(decisionPolicies)).length, 0)
+  })
+})
+
+describe('draft-theme', () => {
+  async function seed() {
+    await db.execute(sql`truncate ${messages}, ${sessions} cascade`)
+    await db.insert(sessions).values({ id: 's1', cwd: '/r', repo: 'r', startedAt: new Date(), lastSeenAt: new Date() })
+    const [j] = await db.insert(llmJobs).values({ kind: 'seed', subject: 's', status: 'done', input: {} }).returning({ id: llmJobs.id })
+    for (const id of ['m1', 'm2', 'm3']) {
+      await db.insert(messages).values({ id, sessionId: 's1', ts: new Date(), kind: 'typed', text: id })
+      await db.insert(correctionReplays).values({ messageId: id, jobId: j!.id, brainCommit: 'x', cause: 'missing', reason: '-' })
+      await db.insert(evalDrafts).values({ messageId: id, jobId: j!.id, caseId: `new-${id}`, title: id, rules: [], body: `## Anti-pattern\n\nmistake ${id}` })
+    }
+  }
+
+  test('규칙 없음 초안 전체를 한 번에 묶고, 대표가 자기 주제에 없으면 실패한다', async () => {
+    const dt = await import('./draft-theme.js')
+    await seed()
+    await replies([
+      ok({
+        themes: [
+          { name: '말투', description: '-', representative: 'new-m1' },
+          { name: '확인', description: '-', representative: 'new-m1' }, // 대표가 '말투' 주제에 배정된 초안
+        ],
+        assignments: [
+          { caseId: 'new-m1', theme: '말투' },
+          { caseId: 'new-m2', theme: '말투' },
+          { caseId: 'new-m3', theme: '확인' },
+        ],
+      }),
+      ok({
+        themes: [
+          { name: '말투', description: '-', representative: 'new-m1' },
+          { name: '확인', description: '-', representative: 'new-m3' },
+        ],
+        assignments: [
+          { caseId: 'new-m1', theme: '말투' },
+          { caseId: 'new-m2', theme: '말투' },
+          { caseId: 'new-m3', theme: '확인' },
+        ],
+      }),
+    ])
+
+    assert.equal(await dt.enqueueThemes(), 1)
+    assert.equal((await drain(dt.draftThemeHandler)).failed, 1)
+    assert.equal((await db.select().from(draftThemes)).length, 0)
+
+    await db.update(llmJobs).set({ status: 'queued' }).where(eq(llmJobs.kind, 'draft-theme'))
+    assert.equal((await drain(dt.draftThemeHandler)).done, 1)
+    // 모델에는 Anti-pattern 절만 갔다
+    assert.match((await prompts())[1]!, /Mistake: mistake m1/)
+    const rows = await db.select({ caseId: evalDrafts.caseId, theme: evalDrafts.theme }).from(evalDrafts).orderBy(evalDrafts.caseId)
+    assert.deepEqual(rows.map((r) => r.theme), ['말투', '말투', '확인'])
   })
 })

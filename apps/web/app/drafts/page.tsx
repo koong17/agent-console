@@ -5,19 +5,30 @@ import { ErrorState } from '../error-state'
 import { Decide } from './decide'
 
 type Drafts = ApiData<'/evals/drafts'>
-
-const CAUSE: Record<string, string> = { missing: '규칙 없음', ignored: '규칙 무시' }
+type Draft = Drafts[number]
+type Themes = ApiData<'/evals/themes'>
 
 // eval 케이스 초안 대기열. 교정 되짚기에서 나온 초안을 골라 suah-brain/evals/cases 에 파일로 남긴다.
+//
+// 두 덩어리로 나눈다(2026-09-30 수아가 "규칙 없음을 주제로 묶기"를 골랐다).
+//   규칙 없음 — 주제별. 주제 하나가 새 규칙 후보 하나다. 대표 초안 하나만 펼쳐 두고 나머지는 접는다.
+//   규칙 무시 — 규칙 id 가 이미 묶음이라 그대로 나열한다.
 export default async function DraftsPage() {
   let drafts: Drafts
+  let themes: Themes
   try {
-    drafts = await unwrapAsync(api.GET('/evals/drafts'))
+    ;[drafts, themes] = await Promise.all([unwrapAsync(api.GET('/evals/drafts')), unwrapAsync(api.GET('/evals/themes'))])
   } catch (err) {
     return <ErrorState title="drafts" error={err} />
   }
 
   const count = (s: string) => drafts.filter((d) => d.status === s).length
+  const byTheme = new Map<string, Draft[]>()
+  for (const d of drafts) if (d.theme) byTheme.set(d.theme, [...(byTheme.get(d.theme) ?? []), d])
+  const byCase = new Map(drafts.map((d) => [d.caseId, d]))
+  const ignored = drafts.filter((d) => d.cause === 'ignored')
+  // 주제가 아직 없는 규칙 없음 초안(주제 묶기 뒤에 새로 생긴 것). 숨기지 않고 따로 보여준다.
+  const unthemed = drafts.filter((d) => d.cause === 'missing' && !d.theme)
 
   return (
     <main>
@@ -32,59 +43,134 @@ export default async function DraftsPage() {
         <>
           <p className="summary">
             결정할 초안 <strong>{count('pending')}</strong> · 저장 <strong>{count('accepted')}</strong> · 버림{' '}
-            <strong>{count('rejected')}</strong>
+            <strong>{count('rejected')}</strong> · 규칙 없음 주제 <strong>{themes.length}</strong>개
             <br />
             저장하면 suah-brain/evals/cases 에 <span className="mono">status: draft</span> 파일 하나를 만들어요. run-evals 는
             active 만 돌리니 평가에는 아직 안 들어가요. 커밋과 active 전환은 브레인 세션에서 해요. 같은 이름의 파일이 있으면
             덮지 않아요.
           </p>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>time</th>
-                  <th>cause</th>
-                  <th>correction</th>
-                  <th>draft</th>
-                  <th>status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {drafts.map((d) => (
-                  <tr key={d.messageId} className={d.status === 'rejected' ? 'is-faint' : undefined}>
-                    <td className="mono">{fmtMinute(String(d.ts))}</td>
-                    <td>
-                      {CAUSE[d.cause] ?? d.cause}
-                      {d.rules.length > 0 && <span className="mono"> {d.rules.join(' ')}</span>}
-                    </td>
-                    <td className="wrap">{d.correction}</td>
-                    <td className="wrap">
-                      {/* 초안 전문은 길어서 접어 둔다. 제목만 보고 고르지 않게 펼쳐 볼 수 있어야 한다. */}
-                      <details>
-                        <summary>
-                          {d.title} <span className="mono cell-zero">{d.caseId}</span>
-                        </summary>
-                        <pre className="block">{d.body}</pre>
-                      </details>
-                    </td>
-                    <td>
-                      {d.status === 'pending' ? (
-                        <Decide messageId={d.messageId} />
-                      ) : d.status === 'accepted' ? (
-                        <>
-                          저장함 <span className="mono">{d.path}</span>
-                        </>
-                      ) : (
-                        '버림'
-                      )}
-                    </td>
+
+          <section>
+            <h2>no rule · by theme</h2>
+            <p className="summary">
+              주제 하나 = 새 규칙 후보 하나. 초안 수가 크면 그 규칙이 여러 번 필요했다는 뜻이에요. 대표 초안 하나를
+              저장하면 그 주제를 지키는 케이스가 생겨요.
+            </p>
+            {themes.length === 0 ? (
+              <p className="state">
+                아직 주제로 묶지 않았어요. <span className="mono">pnpm jobs draft-theme</span> 을 실행하세요.
+              </p>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>theme</th>
+                      <th className="num">drafts</th>
+                      <th className="num">pending</th>
+                      <th>representative</th>
+                      <th>status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {themes.map((t) => {
+                      const rep = byCase.get(t.representative)
+                      const others = (byTheme.get(t.name) ?? []).filter((d) => d.caseId !== t.representative)
+                      return (
+                        <tr key={t.name} className={t.pending === 0 ? 'is-faint' : undefined}>
+                          <td className="wrap">
+                            {t.name}
+                            <div className="cell-zero">{t.description}</div>
+                          </td>
+                          <td className="num">{t.count}</td>
+                          <td className="num">{t.pending}</td>
+                          <td className="wrap">
+                            {rep && <DraftBody d={rep} />}
+                            {others.length > 0 && (
+                              <details>
+                                <summary className="cell-zero">같은 주제 초안 {others.length}개</summary>
+                                {others.map((d) => (
+                                  <div key={d.messageId}>
+                                    <DraftBody d={d} />
+                                    <Status d={d} />
+                                  </div>
+                                ))}
+                              </details>
+                            )}
+                          </td>
+                          <td>{rep && <Status d={rep} />}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {unthemed.length > 0 && (
+              <p className="summary">
+                <span className="status-warning">주제가 없는 규칙 없음 초안 {unthemed.length}개</span> — 주제를 묶은 뒤에 생겼어요.{' '}
+                <span className="mono">pnpm jobs draft-theme</span> 으로 다시 묶으세요.
+              </p>
+            )}
+          </section>
+
+          <section>
+            <h2>rule ignored</h2>
+            <p className="summary">규칙은 있었는데 에이전트가 안 따른 교정. 저장하면 그 규칙이 실제로 읽히는지 지키는 케이스가 돼요.</p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>time</th>
+                    <th>rule</th>
+                    <th>correction → draft</th>
+                    <th>status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {ignored.map((d) => (
+                    <tr key={d.messageId} className={d.status === 'rejected' ? 'is-faint' : undefined}>
+                      <td className="mono">{fmtMinute(String(d.ts))}</td>
+                      <td className="mono">{d.rules.join(' ') || '-'}</td>
+                      {/* 교정과 초안을 한 칸에 둔다. 따로 두면 문장 열 두 개(최대 480씩)와 버튼 열이 1152 를 넘는다(측정: 113px). */}
+                      <td className="wrap">
+                        <div className="cell-zero">{d.correction}</div>
+                        <DraftBody d={d} />
+                      </td>
+                      <td>
+                        <Status d={d} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </>
       )}
     </main>
   )
+}
+
+// 초안 전문은 길어서 접어 둔다. 제목만 보고 고르지 않게 펼쳐 볼 수 있어야 한다.
+function DraftBody({ d }: { d: Draft }) {
+  return (
+    <details>
+      <summary>
+        {d.title} <span className="mono cell-zero">{d.caseId}</span>
+      </summary>
+      <pre className="block">{d.body}</pre>
+    </details>
+  )
+}
+
+function Status({ d }: { d: Draft }) {
+  if (d.status === 'pending') return <Decide messageId={d.messageId} />
+  if (d.status === 'accepted')
+    return (
+      <>
+        저장함 <span className="mono">{d.path}</span>
+      </>
+    )
+  return <>버림</>
 }
