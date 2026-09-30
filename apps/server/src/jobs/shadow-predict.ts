@@ -37,12 +37,12 @@ type Input = {
 type Output = { choice: string; confidence: number; reason: string }
 
 // 결정 시각 직전의 브레인 커밋. 이 커밋의 sense.md 가 그때 에이전트가 따랐던 규칙이다.
-async function commitBefore(ts: Date) {
+export async function commitBefore(ts: Date) {
   const { stdout } = await execFileAsync('git', ['rev-list', '-1', `--before=${ts.toISOString()}`, 'main'], { cwd: BRAIN_DIR })
   return stdout.trim()
 }
 
-async function senseAt(commit: string) {
+export async function senseAt(commit: string) {
   const { stdout } = await execFileAsync('git', ['show', `${commit}:identity/sense.md`], {
     cwd: BRAIN_DIR,
     maxBuffer: 4 * 1024 * 1024,
