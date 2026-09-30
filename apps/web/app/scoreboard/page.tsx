@@ -10,6 +10,7 @@ type Corrections = ApiData<'/scoreboard/corrections'>
 type Evals = ApiData<'/scoreboard/evals'>
 type Phases = ApiData<'/scoreboard/phases'>
 type Drift = ApiData<'/scoreboard/drift'>
+type Taste = ApiData<'/scoreboard/taste'>
 const mark = (p: boolean | null) => (p === null ? '-' : p ? 'pass' : 'fail')
 type Counts = Interventions['total']['counts']
 
@@ -30,8 +31,9 @@ export default async function ScoreboardPage() {
   let ev: Evals
   let ph: Phases
   let dr: Drift
+  let ta: Taste
   try {
-    ;[minutes, shadow, iv, cr, ev, ph, dr] = await Promise.all([
+    ;[minutes, shadow, iv, cr, ev, ph, dr, ta] = await Promise.all([
       unwrapAsync(api.GET('/scoreboard/minutes')),
       unwrapAsync(api.GET('/scoreboard/shadow')),
       unwrapAsync(api.GET('/scoreboard/interventions')),
@@ -39,6 +41,7 @@ export default async function ScoreboardPage() {
       unwrapAsync(api.GET('/scoreboard/evals')),
       unwrapAsync(api.GET('/scoreboard/phases')),
       unwrapAsync(api.GET('/scoreboard/drift')),
+      unwrapAsync(api.GET('/scoreboard/taste')),
     ])
   } catch (err) {
     return <ErrorState title="scoreboard" error={err} />
@@ -331,6 +334,57 @@ export default async function ScoreboardPage() {
           </div>
         </section>
       )}
+      <section>
+        <h2>taste · kept lines</h2>
+        {ta.byRepo.length === 0 ? (
+          <p className="state">
+            아직 재지 않았어요. <span className="mono">pnpm ingest</span> 다음에 <span className="mono">pnpm taste</span> 를
+            실행하세요.
+          </p>
+        ) : (
+          <>
+            <p className="summary">
+              에이전트가 Edit/Write 로 더한 줄 가운데 기준 브랜치의 그 파일에 아직 있는 비율이에요.
+              {ta.checkedAt && <> 잰 시각 {fmtMinute(String(ta.checkedAt))}.</>}
+              <br />
+              남았다 = 받아들여졌다지만, 사라졌다에는 수아 님이 고침·에이전트가 나중에 고침·옮겨감이 섞여 있어요. 기준
+              브랜치에 파일이 없는 수정(머지 전일 수 있음)은 비율에서 빼고 따로 셌어요. Bash 로 고친 파일(python, sed)은 아직
+              안 잡혀요.
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>repo</th>
+                    <th>base</th>
+                    <th className="num">edits</th>
+                    <th className="num">added lines</th>
+                    <th className="num">kept</th>
+                    <th className="num">kept %</th>
+                    <th className="num">no file on base</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ta.byRepo.map((r) => (
+                    <tr key={r.repo}>
+                      <td>{r.repo}</td>
+                      <td className="mono">
+                        {r.ref} <span className="cell-zero">{fmtMinute(String(r.refAt)).slice(0, 10)}</span>
+                      </td>
+                      <td className="num">{r.edits}</td>
+                      <td className="num">{r.added.toLocaleString()}</td>
+                      <td className="num">{r.kept.toLocaleString()}</td>
+                      <td className="num">{pct(r.kept, r.added)}</td>
+                      <td className="num">{r.noFile}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
       {dr.kinds.length > 0 && (
         <section>
           <h2>drift</h2>

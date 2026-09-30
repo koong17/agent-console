@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { DateTime } from './schemas.js'
 import { db } from './db/index.js'
-import { correctionReplays, decisionKinds, decisionPolicies, decisions, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
+import { agentEdits, correctionReplays, decisionKinds, decisionPolicies, decisions, editSurvival, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
 import { strip } from './jobs/shadow-predict.js'
 
 // 대체 로드맵의 점수판(/scoreboard). 브레인이 수아를 얼마나 대신하고 있나를 숫자로 본다.
@@ -126,6 +126,16 @@ const Drift = Type.Object({
       lastAt: DateTime,
     }),
   ),
+})
+
+// 취향 첫 숫자: 에이전트가 쓴 줄 가운데 기준 브랜치에 남은 비율(taste.ts). 파일이 기준 브랜치에 없는 수정은
+// 비율에서 빼고 따로 센다 — 머지 전인지 지운 건지 가를 수 없어서, 0 으로 세면 비율이 거짓으로 떨어진다.
+const survival = { edits: Type.Integer(), added: Type.Integer(), kept: Type.Integer() }
+const Taste = Type.Object({
+  checkedAt: Type.Union([DateTime, Type.Null()]),
+  byRepo: Type.Array(Type.Object({ ...survival, repo: Type.String(), ref: Type.String(), refAt: DateTime, noFile: Type.Integer() })),
+  // 주 단위(수정한 주). 오래된 수정일수록 고쳐질 시간이 길었다는 점을 같이 읽어야 한다.
+  byWeek: Type.Array(Type.Object({ ...survival, week: Type.String() })),
 })
 
 const CALIBRATION_BUCKETS = 5
@@ -498,5 +508,39 @@ export function scoreboardRoutes(app: App) {
       })
       .sort((a, b) => Number(b.drifted) - Number(a.drifted) || b.n - a.n)
     return { minDecisions: DRIFT_MIN, kinds }
+  })
+
+  app.get('/scoreboard/taste', { schema: { response: { 200: Taste } } }, async () => {
+    const [meta] = await db.select({ at: sql<string | null>`max(${editSurvival.checkedAt})` }).from(editSurvival)
+    const byRepo = await db
+      .select({
+        repo: sql<string>`${editSurvival.repo}`,
+        ref: sql<string>`max(${editSurvival.ref})`,
+        refAt: sql<string>`max(${editSurvival.refAt})`,
+        edits: sql<number>`count(*) filter (where ${editSurvival.fileFound})::int`,
+        added: sql<number>`coalesce(sum(${editSurvival.added}) filter (where ${editSurvival.fileFound}), 0)::int`,
+        kept: sql<number>`coalesce(sum(${editSurvival.kept}) filter (where ${editSurvival.fileFound}), 0)::int`,
+        noFile: sql<number>`count(*) filter (where not ${editSurvival.fileFound})::int`,
+      })
+      .from(editSurvival)
+      .groupBy(editSurvival.repo)
+      .orderBy(sql`count(*) desc`)
+    const byWeek = await db
+      .select({
+        week: sql<string>`to_char(date_trunc('week', ${agentEdits.ts}), 'YYYY-MM-DD')`,
+        edits: sql<number>`count(*)::int`,
+        added: sql<number>`sum(${editSurvival.added})::int`,
+        kept: sql<number>`sum(${editSurvival.kept})::int`,
+      })
+      .from(editSurvival)
+      .innerJoin(agentEdits, sql`${agentEdits.id} = ${editSurvival.editId}`)
+      .where(sql`${editSurvival.fileFound}`)
+      .groupBy(sql`1`)
+      .orderBy(sql`1 desc`)
+    return {
+      checkedAt: meta?.at ?? null,
+      byRepo: byRepo.map((r) => ({ ...r, edits: Number(r.edits), added: Number(r.added), kept: Number(r.kept), noFile: Number(r.noFile) })),
+      byWeek: byWeek.map((r) => ({ ...r, edits: Number(r.edits), added: Number(r.added), kept: Number(r.kept) })),
+    }
   })
 }

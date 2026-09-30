@@ -2108,6 +2108,105 @@
         }
       }
     },
+    "/scoreboard/taste": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "checkedAt",
+                    "byRepo",
+                    "byWeek"
+                  ],
+                  "properties": {
+                    "checkedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "byRepo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "edits",
+                          "added",
+                          "kept",
+                          "repo",
+                          "ref",
+                          "refAt",
+                          "noFile"
+                        ],
+                        "properties": {
+                          "edits": {
+                            "type": "integer"
+                          },
+                          "added": {
+                            "type": "integer"
+                          },
+                          "kept": {
+                            "type": "integer"
+                          },
+                          "repo": {
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          },
+                          "refAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "noFile": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "byWeek": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "edits",
+                          "added",
+                          "kept",
+                          "week"
+                        ],
+                        "properties": {
+                          "edits": {
+                            "type": "integer"
+                          },
+                          "added": {
+                            "type": "integer"
+                          },
+                          "kept": {
+                            "type": "integer"
+                          },
+                          "week": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/evals/drafts": {
       "get": {
         "responses": {

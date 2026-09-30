@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { sessions, turns, skillInvocations, toolResults, messages } from '../db/schema.js'
+import { sessions, turns, skillInvocations, toolResults, messages, agentEdits } from '../db/schema.js'
 import { emptyTranscriptStats, ingestFile } from './transcripts.js'
 
 // DB 를 실제로 건드리는 유일한 테스트 파일이다. parseFile 쪽 테스트는 메모리까지만 가고
@@ -246,5 +246,42 @@ describe('ingestFile (DB)', () => {
     await run(path)
     const after = (await db.execute<{ x: string }>(sql`select xmin::text as x from tool_results`)).rows[0]!.x
     assert.equal(after, before) // xmin 이 같다 = 행이 다시 쓰이지 않았다
+  })
+
+  // 진행 중 세션: 호출 줄만 있고 결과 줄은 아직 없을 수 있다. 그때 failed 는 null 이고,
+  // 결과가 붙은 다음 적재에서 한 번 채워진다.
+  test('파일 수정 기록: Edit/Write 를 담고, 결과가 늦게 오면 그때 성공/실패를 채운다', async () => {
+    const call = assistantLine(
+      { input_tokens: 1, output_tokens: 1 },
+      {
+        message: {
+          id: 'msg_1',
+          model: 'claude-opus-5',
+          usage: { input_tokens: 1, output_tokens: 1 },
+          content: [
+            { type: 'tool_use', id: 'toolu_e', name: 'Edit', input: { file_path: '/r/a.ts', old_string: 'a', new_string: 'b' } },
+            { type: 'tool_use', id: 'toolu_w', name: 'Write', input: { file_path: '/r/b.md', content: '# b' } },
+          ],
+        },
+      },
+    )
+    const result = (id: string, is_error: boolean) => ({
+      ...base,
+      type: 'user',
+      uuid: `r-${id}`,
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'x', is_error }] },
+    })
+
+    const first = await run(await fixture([call]))
+    let rows = await db.select().from(agentEdits).orderBy(agentEdits.id)
+    assert.equal(first.edits, 2)
+    assert.deepEqual(rows.map((r) => [r.tool, r.oldText, r.newText, r.failed]), [
+      ['Edit', 'a', 'b', null],
+      ['Write', null, '# b', null],
+    ])
+
+    await run(await fixture([call, result('toolu_e', true), result('toolu_w', false)]))
+    rows = await db.select().from(agentEdits).orderBy(agentEdits.id)
+    assert.deepEqual(rows.map((r) => r.failed), [true, false])
   })
 })

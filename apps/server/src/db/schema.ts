@@ -152,6 +152,57 @@ export const messages = pgTable(
   (t) => [index('messages_session_ts_idx').on(t.sessionId, t.ts)],
 )
 
+// 에이전트가 파일을 고친 기록. Edit/Write 도구 호출 하나당 한 줄. 로드맵 3단계(취향)의 재료다.
+//
+// 3단계는 "에이전트가 쓴 것과 수아가 남긴 것의 차이"를 잰다. 그러려면 먼저 에이전트가 무엇을 썼는지가
+// 남아 있어야 한다. transcript 에는 도구 입력 원문이 있지만 설정이 바뀌면 지워진다. 그래서 적재한다.
+// 2026-09-30 측정: 1,823건(Edit 1,248, Write 575), 3.8MB, 실패 34건. 전부 담아도 작다.
+//
+// 비교(최종 커밋에 얼마나 남았나)는 여기서 하지 않는다. 이 표는 "무엇을 썼나"만 담는다.
+export const agentEdits = pgTable(
+  'agent_edits',
+  {
+    // transcript 의 tool_use id
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    ts: timestamp('ts', { withTimezone: true }).notNull(),
+    tool: text('tool', { enum: ['Edit', 'Write'] }).notNull(),
+    filePath: text('file_path').notNull(),
+    // Edit 이면 바꾸기 전 문자열. Write 는 파일 전체를 새로 쓰므로 null.
+    oldText: text('old_text'),
+    // Edit 이면 바꾼 뒤 문자열, Write 면 파일 전체 내용.
+    newText: text('new_text').notNull(),
+    replaceAll: boolean('replace_all').notNull().default(false),
+    sidechain: boolean('sidechain').notNull().default(false),
+    // 도구가 실패했나(tool_result 의 is_error). 결과를 아직 못 읽었으면 null — 진행 중 세션.
+    failed: boolean('failed'),
+  },
+  (t) => [index('agent_edits_file_ts_idx').on(t.filePath, t.ts)],
+)
+
+// 파일 수정이 지금 얼마나 남아 있나. agent_edits 한 줄마다 "더한 줄 중 몇 줄이 기준 브랜치의 그 파일에
+// 아직 있나"를 잰 스냅숏. 3단계(취향)의 첫 숫자다 — 에이전트가 쓴 것 가운데 수아가 남긴 비율.
+//
+// 한계를 먼저 적는다. "남았다"는 수아가 받아들였다는 뜻이지만 "사라졌다"는 여러 뜻이다: 수아가 고침,
+// 에이전트가 나중에 스스로 고침, 리팩터로 옮겨감, 파일이 사라짐. 줄 단위 비교라 줄 안의 작은 수정도
+// "사라짐"으로 센다. 기준 브랜치는 로컬 ref 라 fetch 하지 않은 만큼 낡을 수 있다(refAt 으로 보인다).
+export const editSurvival = pgTable('edit_survival', {
+  editId: text('edit_id')
+    .primaryKey()
+    .references(() => agentEdits.id),
+  repo: text('repo'),
+  // 비교한 ref(origin/develop 등)와 그 ref 가 가리키는 커밋 시각
+  ref: text('ref'),
+  refAt: timestamp('ref_at', { withTimezone: true }),
+  // 기준 브랜치에 그 파일이 있었나. 없으면 kept 는 0 이지만 "지웠다"와 "머지 전"을 가를 수 없다.
+  fileFound: boolean('file_found').notNull(),
+  added: integer('added').notNull(),
+  kept: integer('kept').notNull(),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
+})
+
 // 스킬 호출 하나당 한 줄.
 export const skillInvocations = pgTable(
   'skill_invocations',

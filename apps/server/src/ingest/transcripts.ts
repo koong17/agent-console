@@ -13,7 +13,7 @@ import { homedir } from 'node:os'
 import { sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { readLines } from './lines.js'
-import { sessions, turns, skillInvocations, toolResults, messages, type TranscriptStats } from '../db/schema.js'
+import { sessions, turns, skillInvocations, toolResults, messages, agentEdits, type TranscriptStats } from '../db/schema.js'
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
@@ -152,6 +152,8 @@ type ContentBlock = {
   // tool_result 블록. 이름은 없고 어떤 호출의 결과인지만 가리킨다.
   tool_use_id?: string
   content?: unknown
+  // tool_result 블록에서 도구가 실패했을 때 true
+  is_error?: boolean
 }
 
 type MessageContent = string | ContentBlock[]
@@ -252,6 +254,7 @@ type Parsed = {
   skills: Array<typeof skillInvocations.$inferInsert>
   tools: Array<typeof toolResults.$inferInsert>
   messages: Array<typeof messages.$inferInsert>
+  edits: Array<typeof agentEdits.$inferInsert>
 }
 
 // 파일 하나를 끝까지 읽어 넣을 행들을 메모리에 모은다.
@@ -275,6 +278,8 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
   const chain = new Map<string, ChainNode>()
   // 에이전트 글은 message.id 하나가 여러 줄에 걸칠 수 있어 Map 으로 모은다(turnMap 과 같은 이유).
   const msgMap = new Map<string, typeof messages.$inferInsert>()
+  // 에이전트의 Edit/Write 호출. 결과(성공/실패)는 뒤에 오는 tool_result 에서 채운다.
+  const editMap = new Map<string, typeof agentEdits.$inferInsert>()
 
   for await (const raw of readLines(path)) {
     stats.lines++
@@ -325,6 +330,8 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
     if (line.type === 'user' && Array.isArray(line.message?.content)) {
       for (const b of line.message.content) {
         if (b.type !== 'tool_result' || !b.tool_use_id) continue
+        const edit = editMap.get(b.tool_use_id)
+        if (edit) edit.failed = b.is_error === true
         stats.toolResults++
         const call = toolNames.get(b.tool_use_id)
         if (!call) {
@@ -451,6 +458,25 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
     for (const block of typeof m.content === 'string' ? [] : (m.content ?? [])) {
       // 도구 이름을 id 로 기억해둔다. 뒤에 올 tool_result 가 이걸로 이름을 찾는다.
       if (block.type === 'tool_use' && block.id && block.name) toolNames.set(block.id, { name: block.name, calledAt: ts })
+      // 파일 수정. Edit 은 old→new 조각, Write 는 파일 전체. 경로가 없는 호출(형식이 바뀐 경우)은 건너뛴다.
+      if (block.type === 'tool_use' && block.id && (block.name === 'Edit' || block.name === 'Write')) {
+        const input = block.input ?? {}
+        const filePath = typeof input.file_path === 'string' ? input.file_path : null
+        const newText = block.name === 'Edit' ? input.new_string : input.content
+        if (filePath && typeof newText === 'string')
+          editMap.set(block.id, {
+            id: block.id,
+            sessionId: line.sessionId,
+            ts,
+            tool: block.name,
+            filePath,
+            oldText: block.name === 'Edit' && typeof input.old_string === 'string' ? input.old_string : null,
+            newText,
+            replaceAll: input.replace_all === true,
+            sidechain: line.isSidechain === true,
+            failed: null,
+          })
+      }
       if (block.type !== 'tool_use' || block.name !== 'Skill' || !block.id) continue
       const input = block.input ?? {}
       skills.push({
@@ -466,7 +492,7 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
   }
 
   if (!session) return null
-  return { session, turns: [...turnMap.values()], skills, tools, messages: [...msgMap.values()] }
+  return { session, turns: [...turnMap.values()], skills, tools, messages: [...msgMap.values()], edits: [...editMap.values()] }
 }
 
 // INSERT 한 문장에 넣을 행 수. Postgres는 문장당 파라미터 65535개 제한이 있어서
@@ -485,7 +511,7 @@ export async function ingestFile(path: string, stats: TranscriptStats) {
     // 줄은 있는데 세션을 못 만들었다는 건 cwd/sessionId 를 한 줄도 못 읽었다는 뜻이다.
     // 진짜 빈 파일도 여기 걸리므로 0이 아닌 기준선이 있을 수 있다. 급증이 신호다.
     stats.filesEmpty++
-    return { turns: 0, turnsUpdated: 0, skills: 0, messages: 0 }
+    return { turns: 0, turnsUpdated: 0, skills: 0, messages: 0, edits: 0 }
   }
 
   // 파일 하나 = 트랜잭션 하나. 중간에 죽으면 그 파일은 하나도 안 들어간 상태로 남아
@@ -583,7 +609,23 @@ export async function ingestFile(path: string, stats: TranscriptStats) {
       insertedMessages += rows.filter((r) => r.inserted).length
     }
 
-    return { turns: insertedTurns, turnsUpdated: updatedTurns, skills: insertedSkills, messages: insertedMessages }
+    // 파일 수정. 한 번 쓰이면 안 바뀐다 — 단 결과(failed)는 진행 중 세션이면 다음 적재에 채워진다.
+    // called_at 과 같은 "비어 있을 때만 한 번 채우기".
+    let insertedEdits = 0
+    for (const batch of chunks(parsed.edits)) {
+      const rows = await tx
+        .insert(agentEdits)
+        .values(batch)
+        .onConflictDoUpdate({
+          target: agentEdits.id,
+          set: { failed: sql`excluded.failed` },
+          setWhere: sql`${agentEdits.failed} is null and excluded.failed is not null`,
+        })
+        .returning({ inserted: sql<boolean>`(xmax = 0)` })
+      insertedEdits += rows.filter((r) => r.inserted).length
+    }
+
+    return { turns: insertedTurns, turnsUpdated: updatedTurns, skills: insertedSkills, messages: insertedMessages, edits: insertedEdits }
   })
 }
 
@@ -594,11 +636,12 @@ export type TranscriptSummary = {
   turnsUpdated: number
   skills: number
   messages: number
+  edits: number
   stats: TranscriptStats
 }
 
 export async function ingestTranscripts(): Promise<TranscriptSummary> {
-  const total = { files: 0, turns: 0, turnsUpdated: 0, skills: 0, messages: 0 }
+  const total = { files: 0, turns: 0, turnsUpdated: 0, skills: 0, messages: 0, edits: 0 }
   const stats = emptyTranscriptStats()
 
   // '**' 로 서브에이전트 파일까지 훑는다. 위치:
@@ -614,6 +657,7 @@ export async function ingestTranscripts(): Promise<TranscriptSummary> {
     total.turnsUpdated += r.turnsUpdated
     total.skills += r.skills
     total.messages += r.messages
+    total.edits += r.edits
   }
 
   return { ...total, stats }
