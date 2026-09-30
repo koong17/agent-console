@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { DateTime } from './schemas.js'
 import { db } from './db/index.js'
-import { correctionReplays, decisionKinds, decisions, messageIntents, messages, shadowPredictions, toolResults } from './db/schema.js'
+import { correctionReplays, decisionKinds, decisions, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
 import { strip } from './jobs/shadow-predict.js'
 
 // 대체 로드맵의 점수판(/scoreboard). 브레인이 수아를 얼마나 대신하고 있나를 숫자로 본다.
@@ -88,6 +88,23 @@ const Evals = Type.Object({
   ),
   cases: Type.Array(EvalCase),
 })
+
+// 단계별 개입률. "단계"는 그 메시지 전에 같은 세션에서 마지막으로 불린 스킬이다.
+// 스킬이 워크플로 단계를 대신한다(feature-plan → 계획, code-review → 리뷰 ...). 스킬 없이 시작한
+// 대화는 '(none)' 이다. 개입률이 가장 낮은 단계가 가장 먼저 에이전트에게 맡길 후보다.
+const Phases = Type.Object({
+  // 표본이 이보다 적은 단계는 비율이 흔들려서 판단에 쓰지 말라는 표시만 한다(목록에서 빼지는 않는다).
+  minMessages: Type.Integer(),
+  phases: Type.Array(
+    Type.Object({
+      phase: Type.String(),
+      messages: Type.Integer(),
+      correction: Type.Integer(),
+      redirect: Type.Integer(),
+    }),
+  ),
+})
+const PHASE_MIN_MESSAGES = 20
 
 const CALIBRATION_BUCKETS = 5
 // 틀린 예측 목록의 길이. 읽을 것이지 훑을 것이 아니라서 짧게.
@@ -396,5 +413,30 @@ export function scoreboardRoutes(app: App) {
       }
     })
     return { models, cases: all.sort((a, b) => a.caseId.localeCompare(b.caseId)) }
+  })
+
+  app.get('/scoreboard/phases', { schema: { response: { 200: Phases } } }, async () => {
+    // lateral 은 "바깥 행마다 한 번씩 도는 서브쿼리"다. 메시지마다 그 전의 마지막 스킬 하나를 찾는다.
+    // 인덱스(skill_invocations 는 skill, ts)가 session 기준이 아니라 느릴 수 있다 — 메시지가 수천 개라 지금은 괜찮다.
+    const result = await db.execute<{ phase: string; messages: number; correction: number; redirect: number }>(sql`
+      select coalesce(p.skill, '(none)') as phase,
+        count(*)::int as messages,
+        count(*) filter (where mi.intent = 'correction')::int as correction,
+        count(*) filter (where mi.intent = 'redirect')::int as redirect
+      from ${messages} m
+      join ${messageIntents} mi on mi.message_id = m.id
+      left join lateral (
+        select ${skillInvocations.skill} as skill from ${skillInvocations}
+        where ${skillInvocations.sessionId} = m.session_id and ${skillInvocations.ts} <= m.ts
+        order by ${skillInvocations.ts} desc limit 1
+      ) p on true
+      where m.kind = 'typed'
+      group by 1
+      order by 2 desc
+    `)
+    return {
+      minMessages: PHASE_MIN_MESSAGES,
+      phases: result.rows.map((r) => ({ phase: r.phase, messages: Number(r.messages), correction: Number(r.correction), redirect: Number(r.redirect) })),
+    }
   })
 }

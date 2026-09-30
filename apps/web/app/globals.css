@@ -200,6 +200,10 @@ td:first-child {
 tr.is-error td {
   color: var(--error);
 }
+/* 판단에 쓰기엔 표본이 적은 행. 지우지 않고 흐리게 둔다. 첫 열(--ink)까지 같이 흐려야 해서 td 를 직접 고른다. */
+tr.is-faint td {
+  color: var(--faint);
+}
 /* 경고 상태 텍스트 (quiet 등). 에러(--error)보다 한 단계 약한 신호. */
 .status-warning {
   color: var(--warning-deep);

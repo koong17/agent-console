@@ -8,6 +8,7 @@ type Shadow = ApiData<'/scoreboard/shadow'>
 type Interventions = ApiData<'/scoreboard/interventions'>
 type Corrections = ApiData<'/scoreboard/corrections'>
 type Evals = ApiData<'/scoreboard/evals'>
+type Phases = ApiData<'/scoreboard/phases'>
 const mark = (p: boolean | null) => (p === null ? '-' : p ? 'pass' : 'fail')
 type Counts = Interventions['total']['counts']
 
@@ -26,19 +27,28 @@ export default async function ScoreboardPage() {
   let iv: Interventions
   let cr: Corrections
   let ev: Evals
+  let ph: Phases
   try {
-    ;[minutes, shadow, iv, cr, ev] = await Promise.all([
+    ;[minutes, shadow, iv, cr, ev, ph] = await Promise.all([
       unwrapAsync(api.GET('/scoreboard/minutes')),
       unwrapAsync(api.GET('/scoreboard/shadow')),
       unwrapAsync(api.GET('/scoreboard/interventions')),
       unwrapAsync(api.GET('/scoreboard/corrections')),
       unwrapAsync(api.GET('/scoreboard/evals')),
+      unwrapAsync(api.GET('/scoreboard/phases')),
     ])
   } catch (err) {
     return <ErrorState title="scoreboard" error={err} />
   }
 
   const { total, byDay, days } = minutes
+  // 개입률 = (교정 + 방향 전환) / 메시지. 표본이 충분한 단계를 낮은 순으로 먼저, 나머지는 뒤에.
+  const rate = (p: Phases['phases'][number]) => (p.correction + p.redirect) / p.messages
+  const phases = [...ph.phases].sort((a, b) => {
+    const ea = a.messages >= ph.minMessages
+    const eb = b.messages >= ph.minMessages
+    return ea !== eb ? (ea ? -1 : 1) : ea ? rate(a) - rate(b) : b.messages - a.messages
+  })
 
   return (
     <main>
@@ -102,6 +112,41 @@ export default async function ScoreboardPage() {
           </>
         )}
       </section>
+
+      {phases.length > 0 && (
+        <section>
+          <h2>by phase</h2>
+          <p className="summary">
+            단계 = 메시지 직전에 같은 세션에서 마지막으로 불린 스킬. 개입률(교정 + 방향 전환 / 메시지)이 낮은 단계가 먼저
+            맡길 후보예요. 메시지 {ph.minMessages}개 미만은 흐리게 두고 뒤로 보냈어요. code-searching 같은 도구성 스킬도
+            단계로 잡히는 게 이 기준의 한계예요.
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>phase</th>
+                  <th className="num">messages</th>
+                  <th className="num">correction</th>
+                  <th className="num">redirect</th>
+                  <th className="num">intervention</th>
+                </tr>
+              </thead>
+              <tbody>
+                {phases.map((p) => (
+                  <tr key={p.phase} className={p.messages < ph.minMessages ? 'is-faint' : undefined}>
+                    <td>{p.phase}</td>
+                    <td className="num">{p.messages}</td>
+                    <td className="num">{p.correction}</td>
+                    <td className="num">{p.redirect}</td>
+                    <td className="num">{pct(p.correction + p.redirect, p.messages)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section>
         <h2>correction replay</h2>

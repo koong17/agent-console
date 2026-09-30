@@ -1984,6 +1984,57 @@
         }
       }
     },
+    "/scoreboard/phases": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "minMessages",
+                    "phases"
+                  ],
+                  "properties": {
+                    "minMessages": {
+                      "type": "integer"
+                    },
+                    "phases": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "phase",
+                          "messages",
+                          "correction",
+                          "redirect"
+                        ],
+                        "properties": {
+                          "phase": {
+                            "type": "string"
+                          },
+                          "messages": {
+                            "type": "integer"
+                          },
+                          "correction": {
+                            "type": "integer"
+                          },
+                          "redirect": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {
