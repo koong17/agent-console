@@ -298,6 +298,32 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// 블라인드 재예측. 과거 결정 하나를 "그 시점의 브레인"에게 추천 표시를 지운 채 다시 고르게 한 결과.
+//
+// 왜 필요한가: 지금 예측 점수(추천이 수아 답과 맞은 비율)는 닻이 내려 있다. 수아는 추천을 보고
+// 고르므로, 추천을 따라간 것과 추천이 맞은 것이 구분되지 않는다. 브레인이 추천 없이 혼자
+// 골라 수아 답과 맞으면 그건 닻 없는 점수다.
+//
+// "그 시점의 브레인"인 이유: 오늘의 sense.md 에는 그 결정 뒤에 생긴 규칙이 들어 있다. 그걸로
+// 과거를 맞히면 답을 보고 만든 규칙으로 답을 맞히는 것이다.
+export const shadowPredictions = pgTable('shadow_predictions', {
+  decisionId: integer('decision_id')
+    .primaryKey()
+    .references(() => decisions.id),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+  // 예측에 쓴 suah-brain 커밋. 결정 시각 직전의 커밋이다.
+  brainCommit: text('brain_commit').notNull(),
+  // 표시를 지운 선택지 라벨 가운데 하나
+  predicted: text('predicted').notNull(),
+  // 모델이 스스로 말한 확신(0~1). 보정 곡선의 가로축이다.
+  confidence: numeric('confidence', { precision: 4, scale: 3 }).notNull(),
+  // 수아가 실제로 고른 것과 같은가. 수아 답을 표시를 지운 뒤 비교한다.
+  correct: boolean('correct').notNull(),
+  reason: text('reason').notNull(),
+})
+
 export type Session = typeof sessions.$inferSelect
 export type Turn = typeof turns.$inferSelect
 export type SkillInvocation = typeof skillInvocations.$inferSelect

@@ -1,8 +1,10 @@
 import { Type } from 'typebox'
 import { sql } from 'drizzle-orm'
 import type { App } from './app.js'
+import { DateTime } from './schemas.js'
 import { db } from './db/index.js'
-import { messages, toolResults } from './db/schema.js'
+import { decisionKinds, decisions, messages, shadowPredictions, toolResults } from './db/schema.js'
+import { strip } from './jobs/shadow-predict.js'
 
 // 대체 로드맵의 점수판(/scoreboard). 브레인이 수아를 얼마나 대신하고 있나를 숫자로 본다.
 //
@@ -19,6 +21,42 @@ import { messages, toolResults } from './db/schema.js'
 // 도구를 더 부르고 끝난 턴이면 실제 멈춘 시각보다 이르게 잡혀 간격이 길어진다.
 
 const DAYS = 30
+
+const CALIBRATION_BUCKETS = 5
+// 틀린 예측 목록의 길이. 읽을 것이지 훑을 것이 아니라서 짧게.
+const MISSES = 30
+
+const Shadow = Type.Object({
+  n: Type.Integer({ description: '재예측이 끝난 결정 수' }),
+  correct: Type.Integer({ description: '브레인이 추천 없이 수아의 답을 맞힌 수' }),
+  anchored: Type.Object({
+    n: Type.Integer({ description: '그중 에이전트 추천이 있던 결정 수' }),
+    suahChoseRecommended: Type.Integer({ description: '수아가 추천을 고른 수 — 지금 쓰는 닻 내린 점수' }),
+    brainPickedRecommended: Type.Integer({ description: '브레인의 블라인드 답이 그때의 추천과 같은 수' }),
+  }),
+  calibration: Type.Array(
+    Type.Object({
+      from: Type.Number(),
+      to: Type.Number(),
+      n: Type.Integer(),
+      correct: Type.Integer(),
+      meanConfidence: Type.Number(),
+    }),
+  ),
+  byKind: Type.Array(Type.Object({ kind: Type.String(), n: Type.Integer(), correct: Type.Integer() })),
+  misses: Type.Array(
+    Type.Object({
+      decisionId: Type.Integer(),
+      ts: DateTime,
+      question: Type.String(),
+      predicted: Type.String(),
+      chosen: Type.String(),
+      confidence: Type.Number(),
+      reason: Type.String(),
+      kind: Type.Union([Type.String(), Type.Null()]),
+    }),
+  ),
+})
 
 const Latency = Type.Object({
   n: Type.Integer(),
@@ -76,5 +114,81 @@ export function scoreboardRoutes(app: App) {
       days.set(r.day, d)
     }
     return { days: DAYS, total, byDay: [...days.values()].sort((a, b) => b.day.localeCompare(a.day)) }
+  })
+
+  // 블라인드 재예측 점수. shadow_predictions 는 pnpm jobs shadow-predict 가 채운다.
+  app.get('/scoreboard/shadow', { schema: { response: { 200: Shadow } } }, async () => {
+    const rows = await db
+      .select({
+        decisionId: decisions.id,
+        ts: decisions.ts,
+        question: decisions.question,
+        recommended: decisions.recommended,
+        chosen: decisions.chosen,
+        predicted: shadowPredictions.predicted,
+        confidence: shadowPredictions.confidence,
+        correct: shadowPredictions.correct,
+        reason: shadowPredictions.reason,
+        kind: decisionKinds.kind,
+      })
+      .from(shadowPredictions)
+      .innerJoin(decisions, sql`${decisions.id} = ${shadowPredictions.decisionId}`)
+      .leftJoin(decisionKinds, sql`${decisionKinds.decisionId} = ${shadowPredictions.decisionId}`)
+      .orderBy(sql`${decisions.ts} desc`)
+
+    // 같은 결정들에서 "수아가 추천을 골랐나"(닻 내린 점수)와 나란히 놓는다.
+    // 추천이 없던 결정은 그 비교에서만 빠진다.
+    const withRec = rows.filter((r) => r.recommended !== null)
+    const recMatch = withRec.filter((r) => strip(r.recommended!) === strip(r.chosen!)).length
+    const brainAgreesRec = withRec.filter((r) => strip(r.recommended!) === r.predicted).length
+
+    // 보정: 확신을 다섯 칸으로 나눠, 칸마다 실제 정답률을 본다. 잘 보정됐으면 0.8 칸의 정답률이 0.8 근처다.
+    // 칸 경계는 [0,0.2) [0.2,0.4) ... [0.8,1.0]. 1.0 은 마지막 칸에 넣는다.
+    const buckets = Array.from({ length: CALIBRATION_BUCKETS }, (_, i) => ({
+      from: i / CALIBRATION_BUCKETS,
+      to: (i + 1) / CALIBRATION_BUCKETS,
+      n: 0,
+      correct: 0,
+      meanConfidence: 0,
+    }))
+    for (const r of rows) {
+      const c = Number(r.confidence)
+      const b = buckets[Math.min(CALIBRATION_BUCKETS - 1, Math.floor(c * CALIBRATION_BUCKETS))]!
+      b.n++
+      b.meanConfidence += c
+      if (r.correct) b.correct++
+    }
+    for (const b of buckets) if (b.n) b.meanConfidence /= b.n
+
+    // 질문 종류별. 어디서 브레인이 틀리는지가 다음에 고칠 규칙을 가리킨다.
+    const kinds = new Map<string, { kind: string; n: number; correct: number }>()
+    for (const r of rows) {
+      const k = r.kind ?? '(분류 전)'
+      const e = kinds.get(k) ?? { kind: k, n: 0, correct: 0 }
+      e.n++
+      if (r.correct) e.correct++
+      kinds.set(k, e)
+    }
+
+    return {
+      n: rows.length,
+      correct: rows.filter((r) => r.correct).length,
+      anchored: { n: withRec.length, suahChoseRecommended: recMatch, brainPickedRecommended: brainAgreesRec },
+      calibration: buckets,
+      byKind: [...kinds.values()].sort((a, b) => b.n - a.n || a.kind.localeCompare(b.kind)),
+      misses: rows
+        .filter((r) => !r.correct)
+        .slice(0, MISSES)
+        .map((r) => ({
+          decisionId: r.decisionId,
+          ts: r.ts,
+          question: r.question,
+          predicted: r.predicted,
+          chosen: strip(r.chosen!),
+          confidence: Number(r.confidence),
+          reason: r.reason,
+          kind: r.kind,
+        })),
+    }
   })
 }

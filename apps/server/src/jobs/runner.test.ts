@@ -1,13 +1,17 @@
 import { test, describe, before, beforeEach, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { decisions, decisionKinds, llmJobs, questionKinds } from '../db/schema.js'
+import { decisions, decisionKinds, llmJobs, questionKinds, shadowPredictions } from '../db/schema.js'
 import { claim, drain, enqueue, recoverStale } from './runner.js'
 import { KIND, enqueueUnclassified, questionKindHandler } from './question-kind.js'
+
+// 작업 종류가 달라도 같은 표(llm_jobs, decisions)를 비우므로 한 파일에 둔다.
+// node --test 는 파일마다 별도 프로세스로 동시에 돌려서, 파일을 나누면 서로의 행을 지운다.
 
 // 진짜 claude 를 부르지 않는다. 대신 PATH 맨 앞에 가짜 `claude` 실행 파일을 둔다.
 //
@@ -41,37 +45,43 @@ async function prompts() {
   return Promise.all(files.map(async (f) => (JSON.parse(await readFile(join(dir, 'calls', f), 'utf8')) as string[]).at(-1)!))
 }
 
-async function decision(question: string, ts: string) {
+async function decision(
+  question: string,
+  ts: string,
+  over: Partial<typeof decisions.$inferInsert> = {},
+) {
   const [row] = await db
     .insert(decisions)
-    .values({ sessionId: 's1', ts: new Date(ts), header: '', question, options: ['예 (추천)', '아니오'] })
+    .values({ sessionId: 's1', ts: new Date(ts), header: '', question, options: ['예 (추천)', '아니오'], ...over })
     .returning({ id: decisions.id })
   return row!.id
 }
 
+before(async () => {
+  const rows = (await db.execute<{ name: string }>(sql`select current_database() as name`)).rows
+  const name = rows[0]?.name ?? '(알 수 없음)'
+  assert.match(name, /_test$/, `테스트 DB 가 아닙니다(${name}).`)
+  dir = await mkdtemp(join(tmpdir(), 'agent-console-jobs-'))
+  await writeFile(join(dir, 'claude'), fakeClaude)
+  await chmod(join(dir, 'claude'), 0o755)
+  process.env.FAKE_CLAUDE_DIR = dir
+  process.env.PATH = `${dir}:${process.env.PATH}`
+})
+
+beforeEach(async () => {
+  await db.execute(
+    sql`truncate ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
+  )
+  await rm(join(dir, 'calls'), { recursive: true, force: true })
+  await mkdir(join(dir, 'calls'))
+})
+
+after(async () => {
+  await rm(dir, { recursive: true, force: true })
+  await pool.end()
+})
+
 describe('LLM 작업 실행기 (DB)', () => {
-  before(async () => {
-    const rows = (await db.execute<{ name: string }>(sql`select current_database() as name`)).rows
-    const name = rows[0]?.name ?? '(알 수 없음)'
-    assert.match(name, /_test$/, `테스트 DB 가 아닙니다(${name}).`)
-    dir = await mkdtemp(join(tmpdir(), 'agent-console-jobs-'))
-    await writeFile(join(dir, 'claude'), fakeClaude)
-    await chmod(join(dir, 'claude'), 0o755)
-    process.env.FAKE_CLAUDE_DIR = dir
-    process.env.PATH = `${dir}:${process.env.PATH}`
-  })
-
-  beforeEach(async () => {
-    await db.execute(sql`truncate ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`)
-    await rm(join(dir, 'calls'), { recursive: true, force: true })
-    await import('node:fs/promises').then((fs) => fs.mkdir(join(dir, 'calls')))
-  })
-
-  after(async () => {
-    await rm(dir, { recursive: true, force: true })
-    await pool.end()
-  })
-
   test('같은 대상은 두 번 넣어도 작업이 하나다', async () => {
     assert.equal(await enqueue(KIND, [{ subject: '1', input: {} }]), 1)
     assert.equal(await enqueue(KIND, [{ subject: '1', input: {} }]), 0)
@@ -174,5 +184,86 @@ describe('LLM 작업 실행기 (DB)', () => {
     assert.equal(await recoverStale(), 1)
     const rows = Object.fromEntries((await db.select().from(llmJobs)).map((r) => [r.subject, r.status]))
     assert.deepEqual(rows, { old: 'queued', new: 'running' })
+  })
+})
+
+// 블라인드 재예측. 브레인 레포 대신 임시 git 레포를 만든다. 커밋 두 개에 sense.md 내용을 다르게 두고,
+// 결정이 그 사이에 있으면 첫 커밋의 내용이 프롬프트에 들어가야 한다.
+describe('shadow-predict', () => {
+  let brain: string
+  let sp: typeof import('./shadow-predict.js')
+  const commitAt = async (text: string, iso: string) => {
+    await writeFile(join(brain, 'identity', 'sense.md'), text)
+    execFileSync('git', ['add', '-A'], { cwd: brain })
+    execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', text], {
+      cwd: brain,
+      env: { ...process.env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
+    })
+  }
+
+  before(async () => {
+    brain = await mkdtemp(join(tmpdir(), 'agent-console-brain-'))
+    await mkdir(join(brain, 'identity'))
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: brain })
+    await commitAt('OLD RULES', '2026-09-01T00:00:00Z')
+    await commitAt('NEW RULES', '2026-09-20T00:00:00Z')
+    // BRAIN_DIR 은 모듈이 읽힐 때 정해진다. 그래서 환경변수를 바꾼 뒤에 불러온다.
+    process.env.BRAIN_DIR = brain
+    sp = await import('./shadow-predict.js')
+  })
+  after(async () => {
+    await rm(brain, { recursive: true, force: true })
+  })
+
+  test('채점할 수 있는 결정만 넣고, 표시는 지운다', async () => {
+    await decision('단일', '2026-09-10T00:00:00Z', { chosen: '예 (추천)', multiSelect: false })
+    await decision('복수', '2026-09-10T00:01:00Z', { chosen: '예 (추천)', multiSelect: true })
+    await decision('직접 입력', '2026-09-10T00:02:00Z', { chosen: '다른 거', multiSelect: false })
+    await decision('답 없음', '2026-09-10T00:03:00Z', { chosen: null, multiSelect: false })
+
+    assert.equal(await sp.enqueueEligible(), 1)
+    const [job] = await db.select().from(llmJobs)
+    const input = job!.input as { options: string[]; chosen: string; question: string }
+    assert.equal(input.question, '단일')
+    assert.deepEqual(input.options, ['예', '아니오'])
+    assert.equal(input.chosen, '예')
+  })
+
+  test('그 시점의 sense.md 로 묻고, 답과 추천은 프롬프트에 없다', async () => {
+    const id = await decision('커밋할까요?', '2026-09-10T00:00:00Z', { chosen: '아니오', multiSelect: false })
+    await replies([ok({ choice: '예', confidence: 0.8, reason: '승인 규칙' })])
+
+    await sp.enqueueEligible()
+    const s = await drain(sp.shadowPredictHandler)
+    assert.equal(s.done, 1)
+
+    const args = JSON.parse(await readFile(join(dir, 'calls', '0.json'), 'utf8')) as string[]
+    const system = args[args.indexOf('--system-prompt') + 1]!
+    const prompt = args.at(-1)!
+    assert.match(system, /OLD RULES/) // 09-10 결정이면 09-01 커밋
+    assert.doesNotMatch(system, /NEW RULES/)
+    assert.doesNotMatch(prompt, /추천/) // 표시가 지워졌다
+    // 선택지는 enum 으로 묶인다
+    const schema = JSON.parse(args[args.indexOf('--json-schema') + 1]!)
+    assert.deepEqual(schema.properties.choice.enum, ['예', '아니오'])
+
+    const [p] = await db.select().from(shadowPredictions)
+    assert.equal(p!.decisionId, id)
+    assert.equal(p!.predicted, '예')
+    assert.equal(p!.correct, false) // 수아는 아니오
+    assert.equal(Number(p!.confidence), 0.8)
+  })
+
+  test('선택지에 없는 답은 오답이 아니라 실패로 남는다', async () => {
+    await decision('커밋할까요?', '2026-09-10T00:00:00Z', { chosen: '예 (추천)', multiSelect: false })
+    await replies([ok({ choice: '모르겠다', confidence: 0.5, reason: '-' })])
+
+    await sp.enqueueEligible()
+    const s = await drain(sp.shadowPredictHandler)
+
+    assert.equal(s.failed, 1)
+    assert.equal((await db.select().from(shadowPredictions)).length, 0)
+    const [job] = await db.select().from(llmJobs)
+    assert.match(job!.error!, /선택지에 없는 답/)
   })
 })

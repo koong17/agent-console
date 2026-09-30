@@ -674,6 +674,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scoreboard/shadow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description 재예측이 끝난 결정 수 */
+                            n: number;
+                            /** @description 브레인이 추천 없이 수아의 답을 맞힌 수 */
+                            correct: number;
+                            anchored: {
+                                /** @description 그중 에이전트 추천이 있던 결정 수 */
+                                n: number;
+                                /** @description 수아가 추천을 고른 수 — 지금 쓰는 닻 내린 점수 */
+                                suahChoseRecommended: number;
+                                /** @description 브레인의 블라인드 답이 그때의 추천과 같은 수 */
+                                brainPickedRecommended: number;
+                            };
+                            calibration: {
+                                from: number;
+                                to: number;
+                                n: number;
+                                correct: number;
+                                meanConfidence: number;
+                            }[];
+                            byKind: {
+                                kind: string;
+                                n: number;
+                                correct: number;
+                            }[];
+                            misses: {
+                                decisionId: number;
+                                /** Format: date-time */
+                                ts: string;
+                                question: string;
+                                predicted: string;
+                                chosen: string;
+                                confidence: number;
+                                reason: string;
+                                kind: string | null;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest/status": {
         parameters: {
             query?: never;

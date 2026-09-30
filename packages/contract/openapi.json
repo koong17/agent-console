@@ -1438,6 +1438,164 @@
         }
       }
     },
+    "/scoreboard/shadow": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "n",
+                    "correct",
+                    "anchored",
+                    "calibration",
+                    "byKind",
+                    "misses"
+                  ],
+                  "properties": {
+                    "n": {
+                      "type": "integer",
+                      "description": "재예측이 끝난 결정 수"
+                    },
+                    "correct": {
+                      "type": "integer",
+                      "description": "브레인이 추천 없이 수아의 답을 맞힌 수"
+                    },
+                    "anchored": {
+                      "type": "object",
+                      "required": [
+                        "n",
+                        "suahChoseRecommended",
+                        "brainPickedRecommended"
+                      ],
+                      "properties": {
+                        "n": {
+                          "type": "integer",
+                          "description": "그중 에이전트 추천이 있던 결정 수"
+                        },
+                        "suahChoseRecommended": {
+                          "type": "integer",
+                          "description": "수아가 추천을 고른 수 — 지금 쓰는 닻 내린 점수"
+                        },
+                        "brainPickedRecommended": {
+                          "type": "integer",
+                          "description": "브레인의 블라인드 답이 그때의 추천과 같은 수"
+                        }
+                      }
+                    },
+                    "calibration": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "from",
+                          "to",
+                          "n",
+                          "correct",
+                          "meanConfidence"
+                        ],
+                        "properties": {
+                          "from": {
+                            "type": "number"
+                          },
+                          "to": {
+                            "type": "number"
+                          },
+                          "n": {
+                            "type": "integer"
+                          },
+                          "correct": {
+                            "type": "integer"
+                          },
+                          "meanConfidence": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "byKind": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "n",
+                          "correct"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "n": {
+                            "type": "integer"
+                          },
+                          "correct": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "misses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "decisionId",
+                          "ts",
+                          "question",
+                          "predicted",
+                          "chosen",
+                          "confidence",
+                          "reason",
+                          "kind"
+                        ],
+                        "properties": {
+                          "decisionId": {
+                            "type": "integer"
+                          },
+                          "ts": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "question": {
+                            "type": "string"
+                          },
+                          "predicted": {
+                            "type": "string"
+                          },
+                          "chosen": {
+                            "type": "string"
+                          },
+                          "confidence": {
+                            "type": "number"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {

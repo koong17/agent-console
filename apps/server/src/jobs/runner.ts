@@ -18,7 +18,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 export type Handler<I, O> = {
   kind: string
   model: string
-  jsonSchema: object
+  // 답의 모양. 함수면 작업마다 만든다 — 선택지가 작업마다 다른 경우 enum 으로 묶으려고.
+  jsonSchema: object | ((input: I) => object)
   // 실행 시점에 프롬프트를 만든다. 넣을 때 만들지 않는 이유: 프롬프트가 그 순간의 DB 상태
   // (지금까지 생긴 질문 종류 목록 등)에 기대기 때문이다.
   prompt(input: I): Promise<{ system: string; prompt: string }>
@@ -94,7 +95,8 @@ export async function runJob<I, O>(handler: Handler<I, O>, job: LlmJob) {
   try {
     const p = await handler.prompt(job.input as I)
     prompt = p.prompt
-    const r = await ask({ model: handler.model, systemPrompt: p.system, prompt: p.prompt, jsonSchema: handler.jsonSchema })
+    const jsonSchema = typeof handler.jsonSchema === 'function' ? handler.jsonSchema(job.input as I) : handler.jsonSchema
+    const r = await ask({ model: handler.model, systemPrompt: p.system, prompt: p.prompt, jsonSchema })
     if (r.structured === null) throw new Error('structured_output 이 비어 있다')
     await db.transaction(async (tx) => {
       await tx
