@@ -6,10 +6,11 @@ import { ErrorState } from '../error-state'
 
 type Report = ApiData<'/decisions'>
 
-// 추천 라벨의 "(Recommended)" / "(추천)" 꼬리는 훅이 추천을 알아내는 표식이지 내용이 아니다.
+// 추천 라벨의 "(Recommended)" / "(추천)" / "(권장)" 꼬리는 훅이 추천을 알아내는 표식이지 내용이 아니다.
 // 표에서는 떼고 보여준다. 어느 쪽이 추천이었는지는 별도 열이 말한다.
+// 패턴은 훅(scripts/hooks/log-decision.sh), 서버(jobs/shadow-predict.ts)와 같아야 한다. 예전엔 권장이 빠져 있었다.
 const stripMarker = (label: string | null) =>
-  label === null ? '-' : label.replace(/\s*\((Recommended|추천)\)\s*$/, '')
+  label === null ? '-' : label.replace(/\s*\((Recommended|추천|권장)\)\s*$/, '')
 
 export default async function DecisionsPage() {
   let report: Report
