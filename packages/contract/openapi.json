@@ -1255,6 +1255,189 @@
         }
       }
     },
+    "/scoreboard/minutes": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "days",
+                    "total",
+                    "byDay"
+                  ],
+                  "properties": {
+                    "days": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "object",
+                      "required": [
+                        "reply",
+                        "question"
+                      ],
+                      "properties": {
+                        "reply": {
+                          "type": "object",
+                          "required": [
+                            "n",
+                            "p50",
+                            "p90"
+                          ],
+                          "properties": {
+                            "n": {
+                              "type": "integer"
+                            },
+                            "p50": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "p90": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "question": {
+                          "type": "object",
+                          "required": [
+                            "n",
+                            "p50",
+                            "p90"
+                          ],
+                          "properties": {
+                            "n": {
+                              "type": "integer"
+                            },
+                            "p50": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "p90": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "byDay": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "day",
+                          "reply",
+                          "question"
+                        ],
+                        "properties": {
+                          "day": {
+                            "type": "string"
+                          },
+                          "reply": {
+                            "type": "object",
+                            "required": [
+                              "n",
+                              "p50",
+                              "p90"
+                            ],
+                            "properties": {
+                              "n": {
+                                "type": "integer"
+                              },
+                              "p50": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "p90": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "question": {
+                            "type": "object",
+                            "required": [
+                              "n",
+                              "p50",
+                              "p90"
+                            ],
+                            "properties": {
+                              "n": {
+                                "type": "integer"
+                              },
+                              "p50": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "p90": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {

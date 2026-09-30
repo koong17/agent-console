@@ -35,3 +35,7 @@ export const fmtMinute = (iso: string) => minuteFmt.format(new Date(iso))
 // 달라서 서로 비교하면 안 되고, 같은 단위끼리만 크기를 견준다.
 export const fmtBytes = (b: number) =>
   b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : `${Math.round(b / 1024)}KB`
+
+// 초 → 분, 소수 한 자리. 한 열에 초·분·시간 단위를 섞지 않으려고 분 하나로 통일한다
+// (DESIGN.md: 같은 열은 같은 정밀도). null 은 그날 표본이 없다는 뜻이다.
+export const fmtMinutes = (s: number | null) => (s === null ? '-' : (s / 60).toFixed(1))

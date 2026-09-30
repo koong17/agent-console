@@ -269,7 +269,7 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
   // tool_result 줄에는 도구 이름이 없다. 이름은 앞선 assistant 줄의 tool_use 블록에 있고
   // tool_use_id 로 이어진다. 파일을 순서대로 읽으므로 호출을 먼저 만나 여기 담아두고,
   // 결과를 만났을 때 꺼내 쓴다. 전수 측정(2026-09-29)에서 짝이 다른 파일에 있는 경우는 0건이었다.
-  const toolNames = new Map<string, string>()
+  const toolNames = new Map<string, { name: string; calledAt: Date }>()
   // 줄 사슬. replyTo 를 찾으려고 파일 안의 모든 줄을 uuid 로 기억한다.
   // 부모는 항상 자식보다 파일 앞에 있어서 사람 메시지를 만난 순간 바로 거슬러 올라갈 수 있다.
   const chain = new Map<string, ChainNode>()
@@ -326,8 +326,8 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
       for (const b of line.message.content) {
         if (b.type !== 'tool_result' || !b.tool_use_id) continue
         stats.toolResults++
-        const tool = toolNames.get(b.tool_use_id)
-        if (!tool) {
+        const call = toolNames.get(b.tool_use_id)
+        if (!call) {
           // 짝을 못 찾았다. 평소 0이어야 한다 — 0이 아니면 파일 안에서 호출과 결과가
           // 갈라졌거나 우리가 tool_use 를 못 읽고 있다는 뜻이다.
           stats.toolResultsUnmatched++
@@ -338,7 +338,8 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
           sessionId: line.sessionId!,
           repo: session?.repo ?? null,
           ts,
-          tool,
+          tool: call.name,
+          calledAt: call.calledAt,
           bytes: JSON.stringify(b.content ?? '').length,
         })
       }
@@ -449,7 +450,7 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
 
     for (const block of typeof m.content === 'string' ? [] : (m.content ?? [])) {
       // 도구 이름을 id 로 기억해둔다. 뒤에 올 tool_result 가 이걸로 이름을 찾는다.
-      if (block.type === 'tool_use' && block.id && block.name) toolNames.set(block.id, block.name)
+      if (block.type === 'tool_use' && block.id && block.name) toolNames.set(block.id, { name: block.name, calledAt: ts })
       if (block.type !== 'tool_use' || block.name !== 'Skill' || !block.id) continue
       const input = block.input ?? {}
       skills.push({
@@ -550,9 +551,18 @@ export async function ingestFile(path: string, stats: TranscriptStats) {
       insertedSkills += rows.length
     }
 
-    // 도구 응답은 한 번 쓰이면 안 바뀐다. 이미 있으면 건너뛴다.
+    // 도구 응답은 한 번 쓰이면 안 바뀐다. 이미 있으면 건너뛴다 — 단 called_at 만은 예외다.
+    // 이 열이 생기기 전(2026-09-30)에 들어간 행은 비어 있어서, 비어 있을 때만 한 번 채운다.
+    // 조건이 없으면 매 실행 수만 행을 같은 값으로 덮어쓴다(turns 의 setWhere 와 같은 이유).
     for (const batch of chunks(parsed.tools)) {
-      await tx.insert(toolResults).values(batch).onConflictDoNothing()
+      await tx
+        .insert(toolResults)
+        .values(batch)
+        .onConflictDoUpdate({
+          target: toolResults.id,
+          set: { calledAt: sql`excluded.called_at` },
+          setWhere: sql`${toolResults.calledAt} is null and excluded.called_at is not null`,
+        })
     }
 
     // 본문. 대부분 한 번 쓰이면 안 바뀌지만, 적재가 진행 중인 세션을 읽을 수 있다.

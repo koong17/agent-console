@@ -206,4 +206,45 @@ describe('ingestFile (DB)', () => {
     const [row] = await db.select().from(messages)
     assert.equal(row!.text, '앞\n뒤')
   })
+
+  // 도구가 걸린 시간 = 응답 줄 시각 - 호출 줄 시각. 열이 생기기 전에 들어간 행은 비어 있다가
+  // 다음 적재에서 한 번 채워진다.
+  test('도구 호출 시각이 남고, 비어 있던 행은 한 번만 채워진다', async () => {
+    const lines = [
+      assistantLine(
+        { input_tokens: 1, output_tokens: 1 },
+        {
+          timestamp: '2026-09-29T00:00:00.000Z',
+          message: {
+            id: 'msg_1',
+            model: 'claude-opus-5',
+            usage: { input_tokens: 1, output_tokens: 1 },
+            content: [{ type: 'tool_use', id: 'toolu_q', name: 'AskUserQuestion', input: {} }],
+          },
+        },
+      ),
+      {
+        ...base,
+        timestamp: '2026-09-29T00:03:00.000Z',
+        type: 'user',
+        uuid: 'u1',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_q', content: 'a' }] },
+      },
+    ]
+    const path = await fixture(lines)
+    await run(path)
+    // 열이 생기기 전 상태를 흉내 낸다
+    await db.update(toolResults).set({ calledAt: null })
+
+    await run(path)
+    const [row] = await db.select().from(toolResults)
+    assert.equal(row!.calledAt!.toISOString(), '2026-09-29T00:00:00.000Z')
+    assert.equal(row!.ts.getTime() - row!.calledAt!.getTime(), 3 * 60 * 1000) // 답하기까지 3분
+
+    // 이미 채워진 행은 다시 안 건드린다. updated 가 없는지는 xmax 로 본다.
+    const before = (await db.execute<{ x: string }>(sql`select xmin::text as x from tool_results`)).rows[0]!.x
+    await run(path)
+    const after = (await db.execute<{ x: string }>(sql`select xmin::text as x from tool_results`)).rows[0]!.x
+    assert.equal(after, before) // xmin 이 같다 = 행이 다시 쓰이지 않았다
+  })
 })

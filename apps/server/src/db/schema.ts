@@ -103,6 +103,10 @@ export const toolResults = pgTable(
     repo: text('repo'),
     // 응답이 돌아온 줄의 시각. 컨텍스트 곡선과 같은 시간축에 놓으려고 둔다.
     ts: timestamp('ts', { withTimezone: true }).notNull(),
+    // 호출한 줄(tool_use)의 시각. ts - calledAt 이 도구가 걸린 시간이다.
+    // AskUserQuestion 이면 "질문이 뜬 뒤 수아가 답하기까지"가 된다 — 수아 분(scoreboard.ts)의 한쪽 재료.
+    // 2026-09-30 에 생긴 열. 그 전에 들어간 행은 다음 적재 때 채워진다(transcripts.ts).
+    calledAt: timestamp('called_at', { withTimezone: true }),
     // 도구 이름. tool_use 블록에서 가져온다 — tool_result 줄 자체에는 이름이 없다.
     tool: text('tool').notNull(),
     bytes: integer('bytes').notNull(),
