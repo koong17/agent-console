@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "test": "DATABASE_URL=postgres://localhost:5432/agent_console_test node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "DATABASE_URL=postgres://localhost:5432/agent_console_test node --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "test:db:push": "DATABASE_URL=postgres://localhost:5432/agent_console_test drizzle-kit push",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
