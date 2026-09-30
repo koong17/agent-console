@@ -36,6 +36,8 @@ type EventLine = {
   chosen?: string | null
   agreed?: boolean | null
   raw_response?: unknown
+  // 2026-09-30 부터 남는다. 그 전 줄에는 없다.
+  multi_select?: boolean
 }
 
 export type EventsSummary = { gates: number; decisions: number; stats: EventStats }
@@ -95,6 +97,7 @@ export async function ingestEvents(): Promise<EventsSummary> {
             chosen: e.chosen ?? null,
             agreed: e.agreed ?? null,
             rawResponse: e.raw_response ?? null,
+            multiSelect: e.multi_select ?? null,
           })
         else stats.incomplete++
       } else if (e.type === 'memory-deny') {

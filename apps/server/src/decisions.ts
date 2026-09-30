@@ -32,11 +32,32 @@ const DecisionsReport = Type.Object({
   judged: Type.Integer({ description: '추천이 있고 답도 읽힌 결정. 동의율의 분모' }),
   agreed: Type.Integer(),
   rate: Nullable(Type.Number({ description: 'agreed / judged. judged가 0이면 null' })),
+  missingRecommended: Type.Object({
+    windowDays: Type.Integer(),
+    // 창 안의 결정 수와, 그중 추천이 없었던 수
+    total: Type.Integer(),
+    missing: Type.Integer(),
+    // missing 가운데 복수 선택 질문. 추천 하나가 어울리지 않는 질문이라 따로 센다.
+    // 경보는 이걸 뺀 수로 켠다(missing - multiSelect > 0).
+    multiSelect: Type.Integer(),
+    // 0 이 아니면 켠다. 규칙이 "항상 하나"라서 임계값이 필요 없다.
+    alarm: Type.Boolean(),
+  }),
   // 최근 것부터. 100개면 한 화면에 충분하고, 그 이상은 기간 필터가 생길 때 다시 본다.
   items: Type.Array(DecisionRow),
 })
 
 const LIMIT = 100
+
+// 추천 없는 질문 경보의 창. 최근 이만큼의 날짜만 본다.
+//
+// 추천 없는 질문은 예측 점수에 못 들어간다. 점수는 "추천이 수아의 답과 맞았나"라서 추천이 없으면
+// 채점할 것이 없다. 2026-09-30 기준 209건 중 64건이 이랬다. suah-judge 는 2026-09-29 부터
+// "모든 질문은 추천 하나"를 요구한다. 그 규칙이 실제로 지켜지는지 보는 자리다.
+//
+// 전체 기간이 아니라 창을 쓰는 이유: 규칙이 생기기 전의 64건이 영원히 경보를 켜 두면
+// 오늘 새로 어긴 1건이 안 보인다. 7일은 규칙 도입(09-29) 전 기록이 곧 빠져나가는 길이다.
+const MISSING_WINDOW_DAYS = 7
 
 export function decisionRoutes(app: App) {
   app.get('/decisions', { schema: { response: { 200: DecisionsReport } } }, async () => {
@@ -47,6 +68,9 @@ export function decisionRoutes(app: App) {
         total: sql<number>`count(*)::int`,
         judged: sql<number>`count(*) filter (where ${decisions.agreed} is not null)::int`,
         agreed: sql<number>`count(*) filter (where ${decisions.agreed})::int`,
+        windowTotal: sql<number>`count(*) filter (where ${decisions.ts} > now() - make_interval(days => ${MISSING_WINDOW_DAYS}))::int`,
+        windowMissing: sql<number>`count(*) filter (where ${decisions.ts} > now() - make_interval(days => ${MISSING_WINDOW_DAYS}) and ${decisions.recommended} is null)::int`,
+        windowMissingMulti: sql<number>`count(*) filter (where ${decisions.ts} > now() - make_interval(days => ${MISSING_WINDOW_DAYS}) and ${decisions.recommended} is null and ${decisions.multiSelect})::int`,
       })
       .from(decisions)
 
@@ -75,6 +99,13 @@ export function decisionRoutes(app: App) {
       judged,
       agreed: agreedCount,
       rate: judged ? agreedCount / judged : null,
+      missingRecommended: {
+        windowDays: MISSING_WINDOW_DAYS,
+        total: Number(agg?.windowTotal ?? 0),
+        missing: Number(agg?.windowMissing ?? 0),
+        multiSelect: Number(agg?.windowMissingMulti ?? 0),
+        alarm: Number(agg?.windowMissing ?? 0) - Number(agg?.windowMissingMulti ?? 0) > 0,
+      },
       items,
     }
   })

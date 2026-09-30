@@ -579,6 +579,13 @@ export interface paths {
                             judged: number;
                             agreed: number;
                             rate: number | null;
+                            missingRecommended: {
+                                windowDays: number;
+                                total: number;
+                                missing: number;
+                                multiSelect: number;
+                                alarm: boolean;
+                            };
                             items: {
                                 id: number;
                                 sessionId: string;

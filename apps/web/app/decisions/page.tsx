@@ -19,7 +19,7 @@ export default async function DecisionsPage() {
     return <ErrorState title="decisions" error={err} />
   }
 
-  const { total, judged, agreed, rate, items } = report
+  const { total, judged, agreed, rate, missingRecommended: miss, items } = report
 
   return (
     <main>
@@ -39,6 +39,16 @@ export default async function DecisionsPage() {
             추천이 없거나 답을 읽지 못한 결정은 분모에서 빼요. 이 숫자는 추천을 따른 빈도만 말하고, 추천이
             옳았는지는 말하지 않아요.
           </p>
+          {/* 추천 없는 질문은 채점할 수 없다. 점수의 분모에서 조용히 빠지므로 여기서 따로 드러낸다. */}
+          {miss.alarm && (
+            <p className="summary">
+              <span className="status-warning">
+                최근 {miss.windowDays}일 질문 <strong>{miss.total}</strong>건 중 <strong>{miss.missing}</strong>건에
+                추천이 없어요{miss.multiSelect > 0 && <> (그중 복수 선택 {miss.multiSelect}건은 경보에서 뺐어요)</>}.
+                추천 없는 질문은 예측 점수에 못 들어가요. 표의 recommended 가 - 인 행이에요.
+              </span>
+            </p>
+          )}
           <div className="table-wrap">
             <table>
               <thead>

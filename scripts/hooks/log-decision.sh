@@ -20,6 +20,7 @@ tool=$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null)
 #                "Other" 로 직접 입력했으면 선택지에 없는 문장이 온다.
 #   agreed:      chosen == recommended. 둘 중 하나가 없으면 null (판정 불가와 "반대함"을 구분).
 #   raw_response: chosen 을 못 찾았을 때만 응답 전체를 남겨 나중에 형식을 추적할 수 있게 한다.
+#   multi_select: 복수 선택 질문이었나. 추천 없는 질문 경보가 복수 선택을 따로 센다.
 printf '%s' "$payload" | jq -c '
   . as $p
   | ($p.tool_response // {}) as $resp
@@ -39,7 +40,8 @@ printf '%s' "$payload" | jq -c '
       recommended: $rec,
       chosen: $chosen,
       agreed: (if $rec == null or $chosen == null then null else ($chosen == $rec) end),
-      raw_response: (if $chosen == null then $resp else null end)
+      raw_response: (if $chosen == null then $resp else null end),
+      multi_select: ($q.multiSelect // false)
     }' >> "$HOME/.claude/harness-events.jsonl" 2>/dev/null
 
 exit 0

@@ -213,6 +213,11 @@ export const decisions = pgTable(
     agreed: boolean('agreed'),
     // chosen을 못 읽었을 때만 응답 원문. 응답 형식이 바뀌었는지 나중에 추적하는 용도.
     rawResponse: jsonb('raw_response'),
+    // 복수 선택 질문이었나. 2026-09-30 훅에 추가됐다. 그 전 행은 transcript 에서 한 번 채웠고,
+    // transcript 가 이미 지워진 행은 null(모름)이다.
+    // 추천 없는 질문 경보가 이걸 따로 센다 — "리뷰어가 볼 것 고르기" 같은 복수 선택은
+    // 추천 하나가 어울리지 않는 질문이라, 섞어 세면 진짜 누락이 가려진다.
+    multiSelect: boolean('multi_select'),
   },
   // 훅은 초 단위 ts를 남긴다. 한 번의 호출에 질문이 여럿이면 ts가 같으므로 question까지 키에 넣는다.
   // 같은 세션이 같은 초에 같은 문장을 두 번 묻는 일은 없다.

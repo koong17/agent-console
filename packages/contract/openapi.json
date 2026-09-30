@@ -1112,6 +1112,7 @@
                     "judged",
                     "agreed",
                     "rate",
+                    "missingRecommended",
                     "items"
                   ],
                   "properties": {
@@ -1136,6 +1137,33 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "missingRecommended": {
+                      "type": "object",
+                      "required": [
+                        "windowDays",
+                        "total",
+                        "missing",
+                        "multiSelect",
+                        "alarm"
+                      ],
+                      "properties": {
+                        "windowDays": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "missing": {
+                          "type": "integer"
+                        },
+                        "multiSelect": {
+                          "type": "integer"
+                        },
+                        "alarm": {
+                          "type": "boolean"
+                        }
+                      }
                     },
                     "items": {
                       "type": "array",
