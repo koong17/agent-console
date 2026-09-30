@@ -1,8 +1,8 @@
 import { Type } from 'typebox'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, lt, sql } from 'drizzle-orm'
 import type { App } from '../app.js'
 import { db } from '../db/index.js'
-import { ingestRuns } from '../db/schema.js'
+import { ingestRuns, messages } from '../db/schema.js'
 import { DateTime, Nullable } from '../schemas.js'
 import { ingestAll, unexplained, unknownTypes } from './index.js'
 
@@ -28,6 +28,24 @@ const INTERVAL_MS = 60 * 60 * 1000 // 1시간
 // 이래도 heuristic 이다. OS 가 30분 넘게 재우면 또 틀린다. 그 피해는 아래 run() 이
 // 성공 시 error 를 null 로 덮어 스스로 교정하는 것으로 막는다.
 const STALE_MS = 30 * 60 * 1000 // 30분
+
+// 사람 메시지 침묵 경보의 기준. 에이전트 글은 들어오는데 사람이 친 메시지가 0건인 활동일이
+// 이만큼 쌓이면 울린다.
+//
+// 왜 필요한가: 사람 메시지 판정은 transcript 의 origin 필드에 기댄다(transcripts.ts userKind).
+// Claude Code 가 이 필드를 없애면 줄은 여전히 아는 type(user)이고 JSON 도 멀쩡해서
+// unexplained 는 0 그대로다. 매일 수천 줄씩 정상적으로 빠지는 도구 응답 사이에 섞여 조용히 사라진다.
+// 그래서 줄 단위가 아니라 결과의 모양으로 본다 — 에이전트는 사람이 말을 걸어야 답하므로
+// "에이전트 글은 있는데 사람 말이 없는 날"은 정상적으로는 거의 생기지 않는다.
+//
+// 1인 이유: 2026-09-30 전 기간을 날짜별로 쟀을 때 이런 날은 0일이었다. 한 번이면 이미 이상이다.
+// 알고 받아들이는 오탐: "/feature-plan" 같은 명령만으로 돌린 날. 명령은 typed 가 아니다.
+// 명령을 사람 입력으로 같이 세면 그 오탐은 사라지지만, origin 이 사라진 날 명령을 하나라도
+// 쳤으면 경보가 가려진다. 이 경보가 잡으려는 게 origin 고장이라 typed 만 센다.
+//
+// 전제: 자동 작업(claude -p)은 transcript 를 남기지 않는다(run-evals.mjs 의 --no-session-persistence).
+// 로드맵 1단계의 작업 실행기가 세션을 남기게 되면 그 세션은 사람 없이 글만 쌓으므로 여기서 빼야 한다.
+const TYPED_SILENT_DAYS = 1
 
 type Trigger = 'startup' | 'interval' | 'manual'
 
@@ -91,6 +109,14 @@ const IngestStatus = Type.Object({
   current: Nullable(IngestRun),
   // 최근 실행 10개, 새것부터. current도 포함된다.
   recent: Type.Array(IngestRun),
+  // 실행 하나가 아니라 쌓인 결과 전체에 대한 판정이라 recent 옆에 따로 둔다.
+  typedSilence: Type.Object({
+    lastTypedAt: Nullable(DateTime),
+    // 마지막 사람 메시지가 있던 날 이후, 에이전트 글(메인 대화)이 있었던 날 수.
+    silentActiveDays: Type.Integer(),
+    threshold: Type.Integer(),
+    alarm: Type.Boolean(),
+  }),
 })
 
 type Options = {
@@ -187,7 +213,33 @@ export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
       unexplained: r.stats ? unexplained(r.stats) : null,
       unknownTypes: r.stats ? unknownTypes(r.stats) : [],
     }))
-    return { current: recent.find((r) => r.status === 'running') ?? null, recent }
+
+    // 활동일은 "메인 대화에 에이전트 글이 있는 날"이다. 서브에이전트 글은 사람과 무관하게
+    // 부모가 띄우므로 뺀다. 사람 메시지가 한 번도 없으면(null) 에이전트 글이 있는 모든 날을 센다 —
+    // 처음부터 origin 을 못 읽는 경우도 같은 고장이다.
+    const silence = await db.execute<{ last_typed_at: string | null; silent_active_days: number }>(sql`
+      with last_typed as (select max(${messages.ts}) as t from ${messages} where ${messages.kind} = 'typed')
+      select
+        (select t from last_typed) as last_typed_at,
+        (
+          select count(distinct ${messages.ts}::date)::int from ${messages}
+          where ${messages.kind} = 'assistant' and not ${messages.sidechain}
+            and ((select t from last_typed) is null or ${messages.ts}::date > (select t from last_typed)::date)
+        ) as silent_active_days
+    `)
+    const t = silence.rows[0]
+    const silentActiveDays = Number(t?.silent_active_days ?? 0)
+
+    return {
+      current: recent.find((r) => r.status === 'running') ?? null,
+      recent,
+      typedSilence: {
+        lastTypedAt: t?.last_typed_at ?? null,
+        silentActiveDays,
+        threshold: TYPED_SILENT_DAYS,
+        alarm: silentActiveDays >= TYPED_SILENT_DAYS,
+      },
+    }
   })
 
   // 수동 트리거. 기다리지 않고 바로 응답한다. 결과는 /ingest/status로 확인.

@@ -1238,7 +1238,8 @@
                   "type": "object",
                   "required": [
                     "current",
-                    "recent"
+                    "recent",
+                    "typedSilence"
                   ],
                   "properties": {
                     "current": {
@@ -1798,6 +1799,37 @@
                               }
                             ]
                           }
+                        }
+                      }
+                    },
+                    "typedSilence": {
+                      "type": "object",
+                      "required": [
+                        "lastTypedAt",
+                        "silentActiveDays",
+                        "threshold",
+                        "alarm"
+                      ],
+                      "properties": {
+                        "lastTypedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "silentActiveDays": {
+                          "type": "integer"
+                        },
+                        "threshold": {
+                          "type": "integer"
+                        },
+                        "alarm": {
+                          "type": "boolean"
                         }
                       }
                     }

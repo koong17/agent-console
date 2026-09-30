@@ -712,6 +712,12 @@ export interface paths {
                                 unknownTypes: string[];
                                 error: string | null;
                             }[];
+                            typedSilence: {
+                                lastTypedAt: string | null;
+                                silentActiveDays: number;
+                                threshold: number;
+                                alarm: boolean;
+                            };
                         };
                     };
                 };

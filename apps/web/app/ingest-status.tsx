@@ -11,6 +11,7 @@ export function IngestStatus({ status }: { status: Status }) {
   const when = fmtTime(String(last.finishedAt ?? last.startedAt))
   // 삽입 개수만 보면 "0"이 정상인지 고장인지 모른다. 분모로 읽은 줄을 같이 보여준다.
   const lines = last.stats ? last.stats.transcripts.lines + last.stats.events.lines : 0
+  const silence = status.typedSilence
   return (
     <p className={last.status === 'failed' ? 'state-error' : 'summary'}>
       ingestion: {status.current ? '실행 중 · ' : ''}
@@ -39,6 +40,18 @@ export function IngestStatus({ status }: { status: Status }) {
             못 알아본 줄 <strong>{last.unexplained.toLocaleString()}</strong>
             {/* 숫자만 보면 DB를 열어야 원인을 안다. 처음 보는 type 이 있으면 이름까지 여기 적는다. */}
             {last.unknownTypes.length > 0 && <> · 처음 보는 type: {last.unknownTypes.join(', ')}</>}
+          </span>
+        </>
+      ) : null}
+      {/* 사람 메시지를 못 알아보는 고장은 unexplained 에 안 잡힌다(줄은 멀쩡한 user 줄이다).
+          그래서 결과의 모양으로 따로 본다. 서버가 판정하고 여기는 보여주기만 한다. */}
+      {silence.alarm ? (
+        <>
+          {' · '}
+          <span className="status-warning">
+            사람 메시지가 <strong>{silence.silentActiveDays}</strong>활동일째 0건
+            {silence.lastTypedAt && <> (마지막 {fmtTime(String(silence.lastTypedAt))})</>} — 에이전트 글만
+            들어온다. transcript 사용자 줄의 origin 필드를 확인
           </span>
         </>
       ) : null}
