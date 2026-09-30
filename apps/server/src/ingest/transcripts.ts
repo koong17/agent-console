@@ -13,7 +13,7 @@ import { homedir } from 'node:os'
 import { sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { readLines } from './lines.js'
-import { sessions, turns, skillInvocations, toolResults, type TranscriptStats } from '../db/schema.js'
+import { sessions, turns, skillInvocations, toolResults, messages, type TranscriptStats } from '../db/schema.js'
 
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
@@ -116,6 +116,12 @@ const NO_TYPE = '<none>'
 type Line = {
   type: string
   uuid?: string
+  // 대화는 줄들의 사슬이다. 각 줄이 바로 앞 줄의 uuid 를 가리킨다.
+  parentUuid?: string | null
+  // 훅·시스템이 사용자 자리에 끼워 넣은 줄. 사람이 친 게 아니다.
+  isMeta?: boolean
+  // 사용자 줄을 누가 만들었나. 사람이 친 메시지는 { kind: 'human' }.
+  origin?: { kind?: string }
   isSidechain?: boolean
   sessionId?: string
   timestamp?: string
@@ -149,6 +155,62 @@ type ContentBlock = {
 }
 
 type MessageContent = string | ContentBlock[]
+
+// content 에서 text 블록만 이어 붙인다. 문자열이면 그대로.
+function textOf(content: MessageContent | undefined) {
+  if (typeof content === 'string') return content
+  return (content ?? [])
+    .filter((b) => b.type === 'text' && b.text)
+    .map((b) => b.text)
+    .join('\n')
+}
+
+// 사용자 줄 가운데 messages 에 담을 것만 종류를 돌려준다. 나머지는 null.
+//
+// 순서가 중요하다. "/이름" 입력도 origin 이 human 일 때가 있어서 명령을 먼저 가른다.
+// typed 를 origin 으로 판정하는 이유: 로컬 명령 출력, 작업 알림도 같은 user 줄이고
+// 본문 모양으로는 끝없이 예외를 쌓아야 한다. 2026-09-30 측정에서 사람이 친 1,506줄이
+// 전부 origin.kind = 'human' 이었고, 아닌 1줄은 SDK 로 돌린 평가 프롬프트였다.
+//
+// 실패 지점: Claude Code 가 origin 필드를 없애거나 이름을 바꾸면 typed 가 조용히 0이 된다.
+function userKind(line: Line, text: string): 'typed' | 'command' | 'interrupt' | null {
+  if (line.isMeta || !text) return null
+  if (text.includes('<command-name>')) return 'command'
+  if (text.startsWith('[Request interrupted')) return 'interrupt'
+  if (line.origin?.kind === 'human') return 'typed'
+  return null
+}
+
+// 사슬 한 칸. 줄 uuid 로 찾는다.
+type ChainNode = {
+  parent: string | null
+  // 이 줄이 글(text 블록)을 가진 assistant 줄이면 그 응답의 message.id
+  textMsgId?: string
+  // 이 줄이 사람이 직접 친 메시지면 true
+  typed?: boolean
+}
+
+// 사람 메시지가 답한 에이전트 글을 찾는다. 부모 쪽으로 거슬러 올라가며
+// 처음 만나는 "글이 있는 assistant 줄"의 id 를 돌려준다.
+//
+// 지나쳐 가는 줄: 도구 호출만 있는 assistant 줄, tool_result, 훅 주입, 명령, 끊김.
+// 멈추는 줄: 사람이 친 이전 메시지 — 그 사이 에이전트가 글로 한 말이 없었다는 뜻이다.
+//
+// 시각(ts)으로 "바로 앞 assistant"를 고르지 않는 이유: 에이전트가 일하는 중에 친
+// 메시지(queued)는 ts 순서와 대화 순서가 다르고, 서브에이전트 줄이 시간상 끼어든다.
+// 사슬은 transcript 가 직접 기록한 "무엇 다음에 무엇"이라 그 추측이 필요 없다.
+function findReplyTo(chain: Map<string, ChainNode>, start: string | null | undefined) {
+  let cur = start
+  // 사슬이 고리를 이루면 무한 루프다. 정상 파일에선 없지만, 한 번 방문한 줄을 다시
+  // 밟을 수 없으니 줄 수만큼 걸으면 반드시 끝난다.
+  for (let hops = 0; cur && hops < chain.size; hops++) {
+    const node = chain.get(cur)
+    if (!node || node.typed) return null
+    if (node.textMsgId) return node.textMsgId
+    cur = node.parent
+  }
+  return null
+}
 
 // 사용자 메시지 본문에서 "/스킬이름 인자" 입력을 찾는다. Claude Code는 이를
 //   <command-name>/feature-plan</command-name> ... <command-args>TMS-1234</command-args>
@@ -189,6 +251,7 @@ type Parsed = {
   turns: Array<typeof turns.$inferInsert>
   skills: Array<typeof skillInvocations.$inferInsert>
   tools: Array<typeof toolResults.$inferInsert>
+  messages: Array<typeof messages.$inferInsert>
 }
 
 // 파일 하나를 끝까지 읽어 넣을 행들을 메모리에 모은다.
@@ -207,6 +270,11 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
   // tool_use_id 로 이어진다. 파일을 순서대로 읽으므로 호출을 먼저 만나 여기 담아두고,
   // 결과를 만났을 때 꺼내 쓴다. 전수 측정(2026-09-29)에서 짝이 다른 파일에 있는 경우는 0건이었다.
   const toolNames = new Map<string, string>()
+  // 줄 사슬. replyTo 를 찾으려고 파일 안의 모든 줄을 uuid 로 기억한다.
+  // 부모는 항상 자식보다 파일 앞에 있어서 사람 메시지를 만난 순간 바로 거슬러 올라갈 수 있다.
+  const chain = new Map<string, ChainNode>()
+  // 에이전트 글은 message.id 하나가 여러 줄에 걸칠 수 있어 Map 으로 모은다(turnMap 과 같은 이유).
+  const msgMap = new Map<string, typeof messages.$inferInsert>()
 
   for await (const raw of readLines(path)) {
     stats.lines++
@@ -223,6 +291,11 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
     const type = typeof line.type === 'string' ? line.type : NO_TYPE
     stats.typeCounts[type] = (stats.typeCounts[type] ?? 0) + 1
     if (!KNOWN_TYPES.has(type)) stats.unknownTypeLines++
+
+    // 사슬은 sessionId 검사보다 먼저 기록한다. 세션 필드가 없는 줄도 사슬의 한 칸일 수 있고,
+    // 빠지면 그 너머로 못 올라간다.
+    const node: ChainNode = { parent: line.parentUuid ?? null }
+    if (line.uuid) chain.set(line.uuid, node)
 
     // 여기 걸리는 줄은 세지 않는다. summary, file-history-snapshot 처럼 세션 필드가
     // 원래 없는 줄이 정상적으로 많이 섞여 있어서, 세면 신호가 아니라 잡음이 된다.
@@ -267,6 +340,27 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
           ts,
           tool,
           bytes: JSON.stringify(b.content ?? '').length,
+        })
+      }
+    }
+
+    // 대화 본문. 서브에이전트의 user 줄은 부모 에이전트가 넘긴 지시라 사람 말이 아니다.
+    // tool_result 가 섞인 줄은 도구 응답이라 뺀다.
+    if (line.type === 'user' && line.uuid && !line.isSidechain) {
+      const content = line.message?.content
+      const hasToolResult = Array.isArray(content) && content.some((b) => b.type === 'tool_result')
+      const text = hasToolResult ? '' : textOf(content)
+      const kind = userKind(line, text)
+      if (kind) {
+        if (kind === 'typed') node.typed = true
+        msgMap.set(line.uuid, {
+          id: line.uuid,
+          sessionId: line.sessionId,
+          ts,
+          kind,
+          text,
+          sidechain: false,
+          replyTo: kind === 'typed' ? findReplyTo(chain, line.parentUuid) : null,
         })
       }
     }
@@ -339,6 +433,20 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
       prev.outputTokens = Math.max(prev.outputTokens, row.outputTokens)
     }
 
+    // 에이전트가 글로 한 말. 도구 호출만 있는 줄은 글이 비어 건너뛴다.
+    const said = textOf(m.content)
+    if (said) {
+      node.textMsgId = m.id
+      const prevMsg = msgMap.get(m.id)
+      if (!prevMsg) {
+        msgMap.set(m.id, { id: m.id, sessionId: line.sessionId, ts, kind: 'assistant', text: said, sidechain: line.isSidechain === true })
+      } else if (prevMsg.text !== said) {
+        // 한 응답에 글 블록이 둘 이상이면 줄이 나뉜다. 순서대로 잇는다.
+        // 2026-09-30 측정에서 이런 응답은 0건이었지만, 오면 뒤 블록을 잃지 않게 한다.
+        prevMsg.text += '\n' + said
+      }
+    }
+
     for (const block of typeof m.content === 'string' ? [] : (m.content ?? [])) {
       // 도구 이름을 id 로 기억해둔다. 뒤에 올 tool_result 가 이걸로 이름을 찾는다.
       if (block.type === 'tool_use' && block.id && block.name) toolNames.set(block.id, block.name)
@@ -357,7 +465,7 @@ export async function parseFile(path: string, stats: TranscriptStats): Promise<P
   }
 
   if (!session) return null
-  return { session, turns: [...turnMap.values()], skills, tools }
+  return { session, turns: [...turnMap.values()], skills, tools, messages: [...msgMap.values()] }
 }
 
 // INSERT 한 문장에 넣을 행 수. Postgres는 문장당 파라미터 65535개 제한이 있어서
@@ -376,7 +484,7 @@ export async function ingestFile(path: string, stats: TranscriptStats) {
     // 줄은 있는데 세션을 못 만들었다는 건 cwd/sessionId 를 한 줄도 못 읽었다는 뜻이다.
     // 진짜 빈 파일도 여기 걸리므로 0이 아닌 기준선이 있을 수 있다. 급증이 신호다.
     stats.filesEmpty++
-    return { turns: 0, turnsUpdated: 0, skills: 0 }
+    return { turns: 0, turnsUpdated: 0, skills: 0, messages: 0 }
   }
 
   // 파일 하나 = 트랜잭션 하나. 중간에 죽으면 그 파일은 하나도 안 들어간 상태로 남아
@@ -447,7 +555,25 @@ export async function ingestFile(path: string, stats: TranscriptStats) {
       await tx.insert(toolResults).values(batch).onConflictDoNothing()
     }
 
-    return { turns: insertedTurns, turnsUpdated: updatedTurns, skills: insertedSkills }
+    // 본문. 대부분 한 번 쓰이면 안 바뀌지만, 적재가 진행 중인 세션을 읽을 수 있다.
+    // 응답의 글 블록이 두 줄에 걸쳐 있고 두 번째 줄이 아직 안 쓰였다면 앞부분만 들어간다.
+    // 그래서 onConflictDoNothing 대신 "더 길어졌을 때만" 갱신한다 — turns 의 greatest 와 같은 발상.
+    // setWhere 가 없으면 매 실행 수천 행을 덮어쓰고 xmax 구분도 무의미해진다.
+    let insertedMessages = 0
+    for (const batch of chunks(parsed.messages)) {
+      const rows = await tx
+        .insert(messages)
+        .values(batch)
+        .onConflictDoUpdate({
+          target: messages.id,
+          set: { text: sql`excluded.text` },
+          setWhere: sql`length(excluded.text) > length(${messages.text})`,
+        })
+        .returning({ inserted: sql<boolean>`(xmax = 0)` })
+      insertedMessages += rows.filter((r) => r.inserted).length
+    }
+
+    return { turns: insertedTurns, turnsUpdated: updatedTurns, skills: insertedSkills, messages: insertedMessages }
   })
 }
 
@@ -457,11 +583,12 @@ export type TranscriptSummary = {
   // 이미 있던 행의 토큰이 더 큰 값으로 교정된 수. 정상 실행에서는 0이어야 한다.
   turnsUpdated: number
   skills: number
+  messages: number
   stats: TranscriptStats
 }
 
 export async function ingestTranscripts(): Promise<TranscriptSummary> {
-  const total = { files: 0, turns: 0, turnsUpdated: 0, skills: 0 }
+  const total = { files: 0, turns: 0, turnsUpdated: 0, skills: 0, messages: 0 }
   const stats = emptyTranscriptStats()
 
   // '**' 로 서브에이전트 파일까지 훑는다. 위치:
@@ -476,6 +603,7 @@ export async function ingestTranscripts(): Promise<TranscriptSummary> {
     total.turns += r.turns
     total.turnsUpdated += r.turnsUpdated
     total.skills += r.skills
+    total.messages += r.messages
   }
 
   return { ...total, stats }

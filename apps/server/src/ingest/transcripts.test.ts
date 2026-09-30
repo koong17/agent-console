@@ -252,3 +252,111 @@ describe('parseFile', () => {
     assert.equal(parsed?.session.lastSeenAt.toISOString(), '2026-09-12T09:00:00.000Z')
   })
 })
+
+// 대화 본문. 줄 사슬(uuid → parentUuid)을 직접 엮어야 replyTo 를 검증할 수 있어서
+// 줄마다 uuid/parentUuid 를 명시한다.
+describe('parseFile 대화 본문', () => {
+  before(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agent-console-messages-'))
+  })
+  after(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  // 사람이 친 메시지
+  const typed = (uuid: string, parentUuid: string | null, text: string) => ({
+    ...base,
+    type: 'user',
+    uuid,
+    parentUuid,
+    origin: { kind: 'human' },
+    message: { role: 'user', content: text },
+  })
+  // 에이전트 응답의 한 줄. content 블록을 그대로 받는다.
+  const said = (uuid: string, parentUuid: string | null, id: string, content: unknown[], over = {}) =>
+    assistantLine({ uuid, parentUuid, ...over }, { id, content })
+  const toolResult = (uuid: string, parentUuid: string) => ({
+    ...base,
+    type: 'user',
+    uuid,
+    parentUuid,
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' }] },
+  })
+
+  test('사람 메시지는 도구 호출 줄을 지나 직전 에이전트 글을 가리킨다', async () => {
+    const { parsed } = await parse([
+      typed('u1', null, '고쳐줘'),
+      said('a1', 'u1', 'msg_1', [{ type: 'text', text: '읽어볼게요' }]),
+      said('a2', 'a1', 'msg_1', [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }]),
+      toolResult('r1', 'a2'),
+      said('a3', 'r1', 'msg_2', [{ type: 'text', text: '고쳤어요' }]),
+      said('a4', 'a3', 'msg_2', [{ type: 'tool_use', id: 'toolu_2', name: 'Edit', input: {} }]),
+      toolResult('r2', 'a4'),
+      typed('u2', 'r2', '좋아'),
+    ])
+
+    const byId = new Map(parsed!.messages.map((m) => [m.id, m]))
+    assert.equal(byId.get('u1')!.replyTo, null) // 세션 첫 메시지
+    assert.equal(byId.get('u2')!.replyTo, 'msg_2') // 도구 줄 두 칸을 건너뛰었다
+    // 에이전트 글은 응답(message.id) 단위로 하나씩. 도구 호출만 있는 줄은 글이 없다.
+    assert.deepEqual(
+      parsed!.messages.filter((m) => m.kind === 'assistant').map((m) => [m.id, m.text]),
+      [
+        ['msg_1', '읽어볼게요'],
+        ['msg_2', '고쳤어요'],
+      ],
+    )
+  })
+
+  // 에이전트가 말하기 전에 두 번 연달아 보낸 경우. 두 번째는 에이전트 글이 아니라
+  // 내 이전 메시지 다음이다 — 첫 메시지 너머의 글을 끌어오면 틀린 짝이 된다.
+  test('연달아 보낸 두 번째 메시지는 replyTo 가 null', async () => {
+    const { parsed } = await parse([
+      said('a1', null, 'msg_1', [{ type: 'text', text: '끝났어요' }]),
+      typed('u1', 'a1', '하나 더'),
+      typed('u2', 'u1', '그리고 이것도'),
+    ])
+
+    const byId = new Map(parsed!.messages.map((m) => [m.id, m]))
+    assert.equal(byId.get('u1')!.replyTo, 'msg_1')
+    assert.equal(byId.get('u2')!.replyTo, null)
+  })
+
+  // 끊김(Esc)은 사람 말이 아니라 행동이라 사슬을 막지 않는다. 끊은 뒤 친 말은
+  // 끊기 전 에이전트 글에 대한 반응이다.
+  test('끊김과 명령은 담되 사슬을 막지 않는다', async () => {
+    const { parsed } = await parse([
+      said('a1', null, 'msg_1', [{ type: 'text', text: '전부 지울게요' }]),
+      { ...base, type: 'user', uuid: 'i1', parentUuid: 'a1', message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } },
+      { ...base, type: 'user', uuid: 'c1', parentUuid: 'i1', message: { role: 'user', content: '<command-name>/model</command-name>' } },
+      typed('u1', 'c1', '지우지 마'),
+    ])
+
+    const kinds = Object.fromEntries(parsed!.messages.map((m) => [m.id, m.kind]))
+    assert.equal(kinds.i1, 'interrupt')
+    assert.equal(kinds.c1, 'command')
+    assert.equal(parsed!.messages.find((m) => m.id === 'u1')!.replyTo, 'msg_1')
+  })
+
+  test('사람이 친 게 아닌 user 줄은 담지 않는다', async () => {
+    const { parsed } = await parse([
+      // 훅이 끼워 넣은 줄
+      { ...base, type: 'user', uuid: 'm1', isMeta: true, origin: { kind: 'human' }, message: { content: '<system-reminder>' } },
+      // 도구 응답
+      toolResult('r1', 'm1'),
+      // 백그라운드 작업 알림
+      { ...base, type: 'user', uuid: 't1', origin: { kind: 'task-notification' }, message: { content: '<task-notification>' } },
+      // 서브에이전트가 받은 지시(부모 에이전트가 쓴 것)
+      { ...typed('s1', null, '이 파일 찾아'), isSidechain: true },
+      assistantLine(),
+    ])
+
+    assert.deepEqual(parsed!.messages, [])
+  })
+
+  test('서브에이전트의 글은 sidechain 으로 담는다', async () => {
+    const { parsed } = await parse([said('a1', null, 'msg_1', [{ type: 'text', text: '찾았어요' }], { isSidechain: true })])
+
+    assert.equal(parsed!.messages[0]!.sidechain, true)
+  })
+})

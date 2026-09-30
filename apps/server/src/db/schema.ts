@@ -111,6 +111,43 @@ export const toolResults = pgTable(
   (t) => [index('tool_results_session_bytes_idx').on(t.sessionId, t.bytes)],
 )
 
+// 대화 본문. 사람이 친 말과 에이전트가 글로 한 말을 한 표에 시간순으로 담는다.
+//
+// 왜 필요한가: 토큰·도구·결정은 이미 DB 에 있지만 "무슨 말을 했나"는 transcript 에만 있었다.
+// transcript 는 설정(cleanupPeriodDays)이 바뀌면 다시 지워진다. 교정 분류, 되풀이 검증,
+// 취향 측정 같은 로드맵 뒤 단계는 전부 이 본문을 재료로 쓴다.
+//
+// 담지 않는 것: tool_result(도구 응답 — 크기만 tool_results 에), 훅·시스템이 넣은 isMeta 줄,
+// 로컬 명령 출력, 백그라운드 작업 알림, thinking 블록. 사람이 친 것도, 에이전트가 사람에게
+// 보여준 글도 아니기 때문이다. AskUserQuestion 답은 tool_result 로 오므로 decisions 표가 맡는다.
+//
+// "직전 에이전트 말"을 열로 복사해 두지 않고 replyTo 로 가리킨다. 에이전트 글을 전부
+// 따로 저장하므로(2026-09-30 측정: 메인 3.1MB, 서브에이전트 1.8MB) "직전"의 정의를
+// 나중에 바꿔도 다시 적재할 필요가 없다.
+export const messages = pgTable(
+  'messages',
+  {
+    // 사람 말은 transcript 줄 uuid, 에이전트 말은 message.id("msg_...").
+    // 에이전트 응답 하나는 여러 줄로 쪼개져 기록되므로 turns 와 같은 키를 쓴다 — 조인도 된다.
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    ts: timestamp('ts', { withTimezone: true }).notNull(),
+    // 'typed' = 직접 친 메시지, 'command' = "/이름" 입력, 'interrupt' = 작업 중 Esc 로 끊음,
+    // 'assistant' = 에이전트가 쓴 글(text 블록).
+    kind: text('kind', { enum: ['typed', 'command', 'interrupt', 'assistant'] }).notNull(),
+    // 원문 그대로. 명령은 <command-name> 태그까지 포함한다 — 가공은 읽는 쪽이 한다.
+    text: text('text').notNull(),
+    sidechain: boolean('sidechain').notNull().default(false),
+    // typed 메시지만: 이 말이 답한 에이전트 글의 id. parentUuid 사슬을 거슬러 올라가
+    // 처음 만나는 "글이 있는 assistant 줄"이다. 그 전에 사람이 친 다른 메시지를 만나면
+    // (연달아 두 번 보냄) 또는 세션 첫 메시지면 null 이다.
+    replyTo: text('reply_to'),
+  },
+  (t) => [index('messages_session_ts_idx').on(t.sessionId, t.ts)],
+)
+
 // 스킬 호출 하나당 한 줄.
 export const skillInvocations = pgTable(
   'skill_invocations',
@@ -186,6 +223,7 @@ export type Session = typeof sessions.$inferSelect
 export type Turn = typeof turns.$inferSelect
 export type SkillInvocation = typeof skillInvocations.$inferSelect
 export type ToolResult = typeof toolResults.$inferSelect
+export type Message = typeof messages.$inferSelect
 export type GateEvent = typeof gateEvents.$inferSelect
 export type Decision = typeof decisions.$inferSelect
 

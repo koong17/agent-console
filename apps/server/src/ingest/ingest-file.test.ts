@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { sessions, turns, skillInvocations, toolResults } from '../db/schema.js'
+import { sessions, turns, skillInvocations, toolResults, messages } from '../db/schema.js'
 import { emptyTranscriptStats, ingestFile } from './transcripts.js'
 
 // DB 를 실제로 건드리는 유일한 테스트 파일이다. parseFile 쪽 테스트는 메모리까지만 가고
@@ -59,7 +59,7 @@ describe('ingestFile (DB)', () => {
 
   beforeEach(async () => {
     await db.execute(
-      sql`truncate ${sessions}, ${turns}, ${skillInvocations}, ${toolResults} restart identity cascade`,
+      sql`truncate ${sessions}, ${turns}, ${skillInvocations}, ${toolResults}, ${messages} restart identity cascade`,
     )
   })
 
@@ -184,5 +184,26 @@ describe('ingestFile (DB)', () => {
 
     const [row] = await db.select().from(sessions).where(eq(sessions.id, 's1'))
     assert.equal(row!.lastSeenAt.toISOString(), '2026-09-30T12:00:00.000Z')
+  })
+
+  // 적재가 진행 중인 세션을 읽으면 응답의 뒷 블록이 아직 없을 수 있다.
+  // 다음 실행에서 더 긴 글이 오면 채워지고, 같은 글이면 아무것도 안 바뀐다.
+  test('에이전트 글은 길어질 때만 갱신되고 다시 읽어도 안 늘어난다', async () => {
+    const line = (content: unknown[]) =>
+      assistantLine({ input_tokens: 1, output_tokens: 1 }, {
+        message: { id: 'msg_1', model: 'claude-opus-5', usage: { input_tokens: 1, output_tokens: 1 }, content },
+      })
+    const text = (t: string) => ({ type: 'text', text: t })
+
+    const first = await run(await fixture([line([text('앞')])]))
+    const again = await run(await fixture([line([text('앞')])]))
+    await run(await fixture([line([text('앞')]), line([text('뒤')])]))
+    // 잘린 파일을 다시 읽어 짧은 글이 와도 내려가지 않는다
+    await run(await fixture([line([text('앞')])]))
+
+    assert.equal(first.messages, 1)
+    assert.equal(again.messages, 0)
+    const [row] = await db.select().from(messages)
+    assert.equal(row!.text, '앞\n뒤')
   })
 })
