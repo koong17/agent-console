@@ -408,7 +408,7 @@ describe('message-intent', () => {
     assert.equal((await prompts()).filter((p) => p.includes('다 지웠어요')).length, 1)
   })
 
-  // 한 건이라도 빠지면 묶음 전체가 실패한다. 일부만 넣으면 빠진 메시지를 다시 넣을 길이 없다.
+  // 한 건이라도 빠지면 묶음 전체가 실패한다. 빠뜨린 답은 나머지도 믿기 어려워서다(message-intent.ts apply).
   test('답에서 메시지가 빠지면 묶음 전체가 실패한다', async () => {
     await db.execute(sql`truncate ${messages}, ${sessions} cascade`)
     await db.insert(sessions).values({ id: 's1', cwd: '/r', repo: 'r', startedAt: new Date(), lastSeenAt: new Date() })

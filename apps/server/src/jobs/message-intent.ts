@@ -96,8 +96,14 @@ export const messageIntentHandler: Handler<Input, Output> = {
 
   async apply(tx, job, output) {
     const input = job.input as Input
-    // 빠진 메시지가 있으면 묶음 전체를 실패시킨다. 일부만 넣으면 빠진 메시지는 작업이 done 이라
-    // 다시 넣을 방법이 사라진다(enqueue 는 "분류 결과 없는 메시지"를 고르지만 같은 묶음 키가 이미 있다).
+    // 빠진 메시지가 있으면 묶음 전체를 실패시킨다.
+    //
+    // 이유는 "나머지를 못 믿어서"다. 스무 개 중 하나를 빠뜨린 답은 모델이 묶음을 놓쳤다는 신호이고,
+    // 같은 답 안의 나머지 열아홉도 같은 상태에서 나왔다. 전부 버리고 다시 물으면 비용은 한 묶음어치(약 $0.05)다.
+    //
+    // 이전 주석은 "일부만 넣으면 빠진 메시지를 다시 넣을 길이 없다"였는데, 틀렸다(2026-09-30 grill 에서 확인).
+    // enqueueUnclassified 는 분류가 없고 queued/running 묶음에 없는 메시지를 고르므로, done 묶음에서 빠진
+    // 메시지는 다음 실행에 새 묶음으로 들어간다. 일부 저장도 가능한 설계이고, 지금은 신뢰 쪽을 골랐을 뿐이다.
     const got = new Map(output.items.map((o) => [o.id, o]))
     const missing = input.items.filter((i) => !got.has(i.messageId))
     if (missing.length) throw new Error(`답에 빠진 메시지 ${missing.length}건: ${missing.map((m) => m.messageId).join(', ')}`)
