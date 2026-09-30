@@ -60,6 +60,35 @@ const Corrections = Type.Object({
 // 되짚은 교정 목록 길이. inbox 초안을 고르는 자리라 한 번에 읽을 만큼만.
 const RECENT_CORRECTIONS = 30
 
+// 케이스 × 모드의 최신 결과. 실행마다 --filter 로 고른 케이스가 달라서 "실행별 통과율"은
+// 서로 비교가 안 된다. 케이스마다 모드별 최신 결과를 모아 케이스 단위로 판정한다.
+const EvalCase = Type.Object({
+  model: Type.String(),
+  caseId: Type.String(),
+  rules: Type.Array(Type.String()),
+  full: Type.Union([Type.Boolean(), Type.Null()]),
+  baseline: Type.Union([Type.Boolean(), Type.Null()]),
+  holdout: Type.Union([Type.Boolean(), Type.Null()]),
+  lastRunAt: DateTime,
+})
+const Evals = Type.Object({
+  models: Type.Array(
+    Type.Object({
+      model: Type.String(),
+      cases: Type.Integer(),
+      fullPass: Type.Integer(),
+      // full 과 baseline 둘 다 결과가 있는 케이스 중에서
+      paired: Type.Integer(),
+      brainEffect: Type.Integer({ description: 'full 통과 + baseline 실패' }),
+      notTesting: Type.Integer({ description: 'baseline 통과 — 브레인 없이도 맞힘' }),
+      // full 과 holdout 둘 다 있는 케이스 중에서
+      heldOut: Type.Integer(),
+      isolated: Type.Integer({ description: 'full 통과 + holdout 실패 — 그 규칙 줄에만 적힌 판례' }),
+    }),
+  ),
+  cases: Type.Array(EvalCase),
+})
+
 const CALIBRATION_BUCKETS = 5
 // 틀린 예측 목록의 길이. 읽을 것이지 훑을 것이 아니라서 짧게.
 const MISSES = 30
@@ -332,5 +361,40 @@ export function scoreboardRoutes(app: App) {
       // 긴 붙여넣기가 표를 덮지 않게 앞부분만. 전문은 세션 화면에 있다.
       recent: recent.map((r) => ({ ...r, text: r.text.slice(0, 300) })),
     }
+  })
+
+  // 브레인 평가. suah-brain/evals/results 를 적재한 eval_runs/eval_results 에서.
+  app.get('/scoreboard/evals', { schema: { response: { 200: Evals } } }, async () => {
+    // distinct on 은 Postgres 전용 문법이다. (model, case, mode) 마다 order by 의 첫 줄, 즉 최신 하나만 남긴다.
+    const latest = await db.execute<{ model: string; case_id: string; mode: string; pass: boolean; rules: string[]; ran_at: string }>(sql`
+      select distinct on (r.model, e.case_id, r.mode) r.model, e.case_id, r.mode, e.pass, e.rules, r.ran_at
+      from eval_results e join eval_runs r on r.file = e.run_file
+      order by r.model, e.case_id, r.mode, r.ran_at desc
+    `)
+    const cases = new Map<string, { model: string; caseId: string; rules: string[]; full: boolean | null; baseline: boolean | null; holdout: boolean | null; lastRunAt: string }>()
+    for (const r of latest.rows) {
+      const key = `${r.model}\u0000${r.case_id}`
+      const c = cases.get(key) ?? { model: r.model, caseId: r.case_id, rules: r.rules, full: null, baseline: null, holdout: null, lastRunAt: r.ran_at }
+      c[r.mode as 'full' | 'baseline' | 'holdout'] = r.pass
+      if (r.ran_at > c.lastRunAt) c.lastRunAt = r.ran_at
+      cases.set(key, c)
+    }
+    const all = [...cases.values()]
+    const models = [...new Set(all.map((c) => c.model))].map((model) => {
+      const cs = all.filter((c) => c.model === model)
+      const paired = cs.filter((c) => c.full !== null && c.baseline !== null)
+      const held = cs.filter((c) => c.full !== null && c.holdout !== null)
+      return {
+        model,
+        cases: cs.length,
+        fullPass: cs.filter((c) => c.full === true).length,
+        paired: paired.length,
+        brainEffect: paired.filter((c) => c.full && !c.baseline).length,
+        notTesting: paired.filter((c) => c.baseline).length,
+        heldOut: held.length,
+        isolated: held.filter((c) => c.full && !c.holdout).length,
+      }
+    })
+    return { models, cases: all.sort((a, b) => a.caseId.localeCompare(b.caseId)) }
   })
 }

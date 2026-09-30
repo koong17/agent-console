@@ -1854,6 +1854,136 @@
         }
       }
     },
+    "/scoreboard/evals": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "models",
+                    "cases"
+                  ],
+                  "properties": {
+                    "models": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "model",
+                          "cases",
+                          "fullPass",
+                          "paired",
+                          "brainEffect",
+                          "notTesting",
+                          "heldOut",
+                          "isolated"
+                        ],
+                        "properties": {
+                          "model": {
+                            "type": "string"
+                          },
+                          "cases": {
+                            "type": "integer"
+                          },
+                          "fullPass": {
+                            "type": "integer"
+                          },
+                          "paired": {
+                            "type": "integer"
+                          },
+                          "brainEffect": {
+                            "type": "integer",
+                            "description": "full 통과 + baseline 실패"
+                          },
+                          "notTesting": {
+                            "type": "integer",
+                            "description": "baseline 통과 — 브레인 없이도 맞힘"
+                          },
+                          "heldOut": {
+                            "type": "integer"
+                          },
+                          "isolated": {
+                            "type": "integer",
+                            "description": "full 통과 + holdout 실패 — 그 규칙 줄에만 적힌 판례"
+                          }
+                        }
+                      }
+                    },
+                    "cases": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "model",
+                          "caseId",
+                          "rules",
+                          "full",
+                          "baseline",
+                          "holdout",
+                          "lastRunAt"
+                        ],
+                        "properties": {
+                          "model": {
+                            "type": "string"
+                          },
+                          "caseId": {
+                            "type": "string"
+                          },
+                          "rules": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "full": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "baseline": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "holdout": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastRunAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {

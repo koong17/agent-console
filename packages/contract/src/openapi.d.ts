@@ -868,6 +868,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scoreboard/evals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            models: {
+                                model: string;
+                                cases: number;
+                                fullPass: number;
+                                paired: number;
+                                /** @description full 통과 + baseline 실패 */
+                                brainEffect: number;
+                                /** @description baseline 통과 — 브레인 없이도 맞힘 */
+                                notTesting: number;
+                                heldOut: number;
+                                /** @description full 통과 + holdout 실패 — 그 규칙 줄에만 적힌 판례 */
+                                isolated: number;
+                            }[];
+                            cases: {
+                                model: string;
+                                caseId: string;
+                                rules: string[];
+                                full: boolean | null;
+                                baseline: boolean | null;
+                                holdout: boolean | null;
+                                /** Format: date-time */
+                                lastRunAt: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ingest/status": {
         parameters: {
             query?: never;

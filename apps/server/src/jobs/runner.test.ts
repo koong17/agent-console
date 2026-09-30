@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { correctionReplays, decisions, decisionKinds, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
+import { correctionReplays, decisions, decisionKinds, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
 import { claim, drain, enqueue, recoverStale } from './runner.js'
 import { KIND, enqueueUnclassified, questionKindHandler } from './question-kind.js'
 
@@ -72,7 +72,7 @@ before(async () => {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
+    sql`truncate ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
   )
   await rm(join(dir, 'calls'), { recursive: true, force: true })
   await mkdir(join(dir, 'calls'))
@@ -285,6 +285,26 @@ describe('shadow-predict', () => {
     assert.deepEqual(schema.properties.rule.enum, ['', 'BI-10'])
     const [row] = await db.select().from(correctionReplays)
     assert.deepEqual([row!.messageId, row!.cause, row!.rule], ['c1', 'ignored', 'BI-10'])
+  })
+
+  // 평가 결과 적재. 서버 스케줄러와 CLI 가 겹쳐 도는 경우를 흉내 내 둘을 동시에 부른다.
+  // 한쪽만 넣고, 다른 쪽은 죽지 않고 0을 돌려줘야 한다.
+  test('평가 결과는 동시에 적재해도 한 번만 들어가고 둘 다 성공한다', async () => {
+    await mkdir(join(brain, 'evals', 'results'), { recursive: true })
+    const run = (baseline: boolean) => ({
+      ranAt: '2026-09-10T00:00:00Z', model: 'sonnet', judgeModel: 'haiku', baseline, total: 1, passed: 1,
+      results: [{ id: 'case-a', rules: ['BI-10'], pass: true, reason: 'ok' }],
+    })
+    await writeFile(join(brain, 'evals', 'results', 'r1.json'), JSON.stringify(run(false)))
+    await writeFile(join(brain, 'evals', 'results', 'r2.json'), JSON.stringify(run(true)))
+    const { ingestEvals } = await import('../ingest/evals.js')
+
+    const [x, y] = await Promise.all([ingestEvals(), ingestEvals()])
+
+    assert.equal(x.evalRuns + y.evalRuns, 2)
+    const modes = (await db.select().from(evalRuns)).map((r) => r.mode).sort()
+    assert.deepEqual(modes, ['baseline', 'full'])
+    assert.equal((await db.select().from(evalResults)).length, 2)
   })
 
   test('선택지에 없는 답은 오답이 아니라 실패로 남는다', async () => {

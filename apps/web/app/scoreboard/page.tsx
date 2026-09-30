@@ -7,6 +7,8 @@ type Minutes = ApiData<'/scoreboard/minutes'>
 type Shadow = ApiData<'/scoreboard/shadow'>
 type Interventions = ApiData<'/scoreboard/interventions'>
 type Corrections = ApiData<'/scoreboard/corrections'>
+type Evals = ApiData<'/scoreboard/evals'>
+const mark = (p: boolean | null) => (p === null ? '-' : p ? 'pass' : 'fail')
 type Counts = Interventions['total']['counts']
 
 const sum = (c: Counts) => Object.values(c).reduce((a, b) => a + b, 0)
@@ -23,12 +25,14 @@ export default async function ScoreboardPage() {
   let shadow: Shadow
   let iv: Interventions
   let cr: Corrections
+  let ev: Evals
   try {
-    ;[minutes, shadow, iv, cr] = await Promise.all([
+    ;[minutes, shadow, iv, cr, ev] = await Promise.all([
       unwrapAsync(api.GET('/scoreboard/minutes')),
       unwrapAsync(api.GET('/scoreboard/shadow')),
       unwrapAsync(api.GET('/scoreboard/interventions')),
       unwrapAsync(api.GET('/scoreboard/corrections')),
+      unwrapAsync(api.GET('/scoreboard/evals')),
     ])
   } catch (err) {
     return <ErrorState title="scoreboard" error={err} />
@@ -277,6 +281,59 @@ export default async function ScoreboardPage() {
           </div>
         </section>
       )}
+      <section>
+        <h2>evals</h2>
+        {ev.models.length === 0 ? (
+          <p className="state">
+            아직 평가 결과가 없어요. suah-brain 에서 <span className="mono">node scripts/run-evals.mjs</span> 를 돌린 뒤{' '}
+            <span className="mono">pnpm ingest</span> 를 실행하세요.
+          </p>
+        ) : (
+          <>
+            {ev.models.map((m) => (
+              <p className="summary" key={m.model}>
+                <span className="mono">{m.model}</span> · 케이스 <strong>{m.cases}</strong>개 중 full 통과{' '}
+                <strong>{m.fullPass}</strong> · baseline 과 짝지은 {m.paired}개 중 브레인이 만든 차이{' '}
+                <strong>{m.brainEffect}</strong>, 브레인 없이도 통과 <strong className="status-warning">{m.notTesting}</strong> ·
+                holdout 과 짝지은 {m.heldOut}개 중 그 규칙 줄에만 적힌 판례 <strong>{m.isolated}</strong>
+              </p>
+            ))}
+            <p className="summary">
+              케이스마다 모드별 최신 결과로 판정해요. baseline 통과 케이스는 브레인을 시험하지 않으므로 조이거나 빼야
+              해요(run-evals.mjs). 단, 최신 baseline 이 케이스를 고치기 전에 돈 것일 수 있어요 — 고친 케이스는 baseline 을
+              다시 돌려야 정확해요.
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>case</th>
+                    <th>rules</th>
+                    <th>full</th>
+                    <th>baseline</th>
+                    <th>holdout</th>
+                    <th>last run</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ev.cases.map((c) => (
+                    <tr key={`${c.model}-${c.caseId}`}>
+                      <td>{c.caseId}</td>
+                      <td className="mono">{c.rules.join(' ')}</td>
+                      <td className={c.full === false ? 'status-warning' : undefined}>{mark(c.full)}</td>
+                      {/* baseline 통과가 경고다 — 브레인 없이도 맞혔다는 뜻 */}
+                      <td className={c.baseline === true ? 'status-warning' : undefined}>{mark(c.baseline)}</td>
+                      <td>{mark(c.holdout)}</td>
+                      <td className="mono">{fmtMinute(String(c.lastRunAt))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
       <section>
         <h2>suah minutes</h2>
         {byDay.length === 0 ? (

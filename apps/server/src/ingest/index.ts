@@ -1,11 +1,13 @@
 import type { IngestStats, StoredIngestStats } from '../db/schema.js'
 import { ingestTranscripts, KNOWN_TYPES, type TranscriptSummary } from './transcripts.js'
 import { ingestEvents, type EventsSummary } from './events.js'
+import { ingestEvals, type EvalsSummary } from './evals.js'
 
 // 두 소스가 각자 stats 를 돌려주므로 교차 타입(&)으로 합치면 이름이 부딪힌다.
 // 삽입 개수만 펼치고 카운터는 소스별로 stats 안에 나눠 담는다.
 export type IngestSummary = Omit<TranscriptSummary, 'stats'> &
-  Omit<EventsSummary, 'stats'> & { durationMs: number; stats: IngestStats }
+  Omit<EventsSummary, 'stats'> &
+  EvalsSummary & { durationMs: number; stats: IngestStats }
 
 // 모든 소스를 순서대로 읽는다. transcript가 먼저인 이유: gate 준수 판정이
 // skill_invocations(transcript 출처)를 보기 때문에 같은 실행 안에서 둘이 맞아야 한다.
@@ -13,7 +15,10 @@ export async function ingestAll(): Promise<IngestSummary> {
   const started = Date.now()
   const { stats: transcripts, ...t } = await ingestTranscripts()
   const { stats: events, ...e } = await ingestEvents()
-  return { ...t, ...e, durationMs: Date.now() - started, stats: { transcripts, events } }
+  // 브레인 평가 결과. 위 둘과 독립이라 순서는 상관없다. 실행 기록(ingest_runs)에는 아직 열이 없다 —
+  // 결과 파일은 몇 시간에 한 번 생기므로 CLI 출력으로 충분하다.
+  const v = await ingestEvals()
+  return { ...t, ...e, ...v, durationMs: Date.now() - started, stats: { transcripts, events } }
 }
 
 // 설명 안 되는 탈락의 합. 평소 0이어야 하는 숫자라 임계값이 필요 없다.

@@ -363,6 +363,45 @@ export const shadowPredictions = pgTable('shadow_predictions', {
   reason: text('reason').notNull(),
 })
 
+// ---------------------------------------------------------------------------
+// 브레인 평가(suah-brain/evals). run-evals.mjs 가 실행마다 evals/results/<시각>.json 하나를 남긴다.
+//
+// 세 가지 모드가 있다. full = sense.md 전체를 주고, baseline = 아무것도 안 주고, holdout = 그 케이스가
+// 지키는 규칙 줄만 빼고 준다. 같은 케이스를 모드끼리 비교해야 뜻이 생긴다:
+//   full 통과 + baseline 실패   → 브레인이 만든 차이(brain effect)
+//   baseline 통과               → 브레인 없이도 맞힌다. 이 케이스는 브레인을 시험하지 않는다
+//   full 통과 + holdout 실패    → 그 규칙 줄에만 적힌 판례. 이유가 다른 곳에 없다
+// ---------------------------------------------------------------------------
+export const evalRuns = pgTable('eval_runs', {
+  // 결과 파일 이름. 파일 하나 = 실행 하나라서 그대로 키가 되고, 다시 읽어도 중복이 안 생긴다.
+  file: text('file').primaryKey(),
+  ranAt: timestamp('ran_at', { withTimezone: true }).notNull(),
+  // 그 실행이 읽은 sense.md 의 updated 날짜(frontmatter).
+  senseUpdated: text('sense_updated'),
+  model: text('model').notNull(),
+  judgeModel: text('judge_model').notNull(),
+  mode: text('mode', { enum: ['full', 'baseline', 'holdout'] }).notNull(),
+  total: integer('total').notNull(),
+  passed: integer('passed').notNull(),
+  costUsd: numeric('cost_usd', { precision: 10, scale: 6 }),
+})
+
+export const evalResults = pgTable(
+  'eval_results',
+  {
+    runFile: text('run_file')
+      .notNull()
+      .references(() => evalRuns.file),
+    caseId: text('case_id').notNull(),
+    pass: boolean('pass').notNull(),
+    rules: jsonb('rules').$type<string[]>().notNull(),
+    reason: text('reason').notNull(),
+    // 피험 모델의 답 원문. 채점 이유만으로는 무엇을 했는지 안 보일 때 읽는다.
+    response: text('response'),
+  },
+  (t) => [uniqueIndex('eval_results_run_case').on(t.runFile, t.caseId), index('eval_results_case_idx').on(t.caseId)],
+)
+
 export type Session = typeof sessions.$inferSelect
 export type Turn = typeof turns.$inferSelect
 export type SkillInvocation = typeof skillInvocations.$inferSelect
