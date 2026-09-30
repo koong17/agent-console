@@ -38,12 +38,15 @@ apps/server/            Fastify + Drizzle + Postgres
   src/schemas.ts          TypeBox 공통 조각 (DateTime, Nullable)
   src/db/schema.ts        테이블 정의 (아래)
   src/db/seed.ts          model_prices 초기값
-  src/ingest/             transcript·훅 이벤트 읽어 DB에 넣기. scheduler.ts 가 주기 실행
+  src/ingest/             transcript·훅 이벤트·브레인 평가 결과 읽어 DB에 넣기. scheduler.ts 가 주기 실행
+  src/jobs/               LLM 작업(claude -p). runner.ts 가 llm_jobs 표를 큐로 쓴다. 종류마다 파일 하나
+  src/scoreboard.ts       대체 로드맵 점수판: 수아 분, 블라인드 재예측·보정, 개입, 교정 되짚기, 단계별, evals
   src/openapi-emit.ts     OpenAPI 스펙을 packages/contract 로 쓰기
 apps/web/               Next 16, 서버 컴포넌트가 Fastify를 직접 호출 (CORS 없음)
   app/page.tsx            /          요청 추적 + ingestion 상태
   app/usage/              /usage     일별 비용, 레포별, 게이트 준수율, 스킬 주간 행렬
   app/sessions/           /sessions  세션 목록 → /sessions/[id] 응답별 토큰·비용
+  app/scoreboard/         /scoreboard 브레인이 수아를 얼마나 대신하나
   app/server.ts           openapi-fetch 클라이언트. 타입은 packages/contract 에서
   app/globals.css         디자인 토큰과 공용 클래스. 규칙은 DESIGN.md
 packages/contract/      openapi.json (서버가 생성) + openapi.d.ts (거기서 생성). 손으로 고치지 않음
@@ -61,6 +64,15 @@ scripts/, .githooks/    계약 신선도 검사 (아래)
 | `gate_events` | suah-judge 게이트 울림 하나 (nudged/throttled) | `~/.claude/harness-events.jsonl` |
 | `model_prices` | 모델별 USD/MTok 단가 | `pnpm db:seed` |
 | `ingest_runs` | ingestion 실행 하나 (running/done/failed) | 스케줄러 |
+| `messages` | 사람 메시지(typed/command/interrupt) 또는 에이전트 글 하나 | transcript. 사람 메시지는 `reply_to` 로 답한 글을 가리킨다 |
+| `tool_results` | 도구 응답 하나 (바이트, 호출·응답 시각) | transcript 의 tool_result |
+| `decisions` | 에이전트 질문에 대한 수아의 답 하나 | `harness-events.jsonl` 의 decision 줄 |
+| `llm_jobs` | claude -p 호출 하나 (queued/running/done/failed, 비용) | `pnpm jobs` |
+| `question_kinds`, `decision_kinds` | 뜻으로 묶은 질문 종류, 결정별 종류 | `pnpm jobs question-kind` |
+| `shadow_predictions` | 결정 하나의 블라인드 재예측 | `pnpm jobs shadow-predict` |
+| `message_intents` | 사람 메시지 하나의 개입 종류 | `pnpm jobs message-intent` |
+| `correction_replays` | 교정 하나의 원인(규칙 없음/무시/틀림) | `pnpm jobs correction-replay` |
+| `eval_runs`, `eval_results` | 브레인 평가 실행과 케이스 결과 | `suah-brain/evals/results/*.json` |
 
 키는 전부 원본의 ID다. 같은 파일을 다시 읽어도 `ON CONFLICT` 로 걸러져 중복이 안 생긴다.
 
@@ -80,7 +92,8 @@ scripts/, .githooks/    계약 신선도 검사 (아래)
 | 루트 | `pnpm format` | prettier |
 | apps/server | `pnpm ingest` | ingestion 수동 실행 (서버가 켜져 있으면 알아서 돈다) |
 | apps/server | `pnpm db:push` / `db:seed` / `db:studio` | 스키마 적용 / 단가표 / 브라우저 DB 뷰어 |
-| apps/server | `pnpm test` | 테스트 30개. DATABASE_URL을 `agent_console_test`로 고정해서 돈다 |
+| apps/server | `pnpm jobs <종류> [--limit N] [--retry-failed]` | LLM 작업 넣고 비우기. 종류: question-kind, shadow-predict, message-intent, correction-replay. 돈이 들어서 자동으로 안 돈다 |
+| apps/server | `pnpm test` | DATABASE_URL을 `agent_console_test`로 고정하고, 파일을 하나씩(--test-concurrency=1) 돈다 |
 | apps/server | `pnpm test:db:push` | 테스트 DB에 스키마 적용. 스키마를 바꾸면 여기도 한 번 |
 | HTTP | `POST /ingest/run`, `GET /ingest/status` | 수동 트리거(202), 실행 이력 |
 
@@ -93,10 +106,14 @@ pnpm test:db:push               # 스키마를 바꿀 때마다
 pnpm test
 ```
 
-`src/**/*.test.ts` 30개. 두 층으로 나뉜다.
+`src/**/*.test.ts` 53개(2026-09-30). 층으로 나뉜다.
 
 - `lines.test.ts`, `transcripts.test.ts` — DB를 안 쓴다. `parseFile`이 파일을 읽어 메모리에 행을 모으는 데까지가 그 층이고, 카운터 로직도 전부 거기 있다.
 - `ingest-file.test.ts` — DB를 쓴다. 트랜잭션·충돌 처리·멱등성은 여기서만 검증된다.
+- `jobs/runner.test.ts` — LLM 작업. 진짜 claude 대신 PATH 맨 앞에 가짜 `claude` 실행 파일을 둔다. 브레인 레포도 임시 git 레포로 만든다.
+- `scoreboard.test.ts` — 점수판 라우트를 `app.inject` 로 부른다. 집계 SQL 의 경계(전체 줄, 칸 끝)를 본다.
+
+파일마다 같은 테스트 DB 표를 비우므로 파일을 동시에 돌리면 서로의 행을 지운다. 그래서 `--test-concurrency=1` 이다.
 
 DB 테스트는 매 테스트 전에 표를 truncate 한다. 그래서 `pnpm test`가 DATABASE_URL을 테스트 DB로 고정하고, 그걸 우회해도 `before` 훅이 DB 이름이 `_test`로 끝나는지 한 번 더 본다.
 
