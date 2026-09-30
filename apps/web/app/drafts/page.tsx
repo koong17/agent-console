@@ -166,11 +166,7 @@ function DraftBody({ d }: { d: Draft }) {
 
 function Status({ d }: { d: Draft }) {
   if (d.status === 'pending') return <Decide messageId={d.messageId} />
-  if (d.status === 'accepted')
-    return (
-      <>
-        저장함 <span className="mono">{d.path}</span>
-      </>
-    )
+  // 경로를 그대로 쓰면 긴 파일 이름이 버튼 자리를 넓혀 표가 흐트러진다. 상태만 보이고 경로는 마우스를 올리면 뜬다.
+  if (d.status === 'accepted') return <span title={d.path ?? undefined}>저장함</span>
   return <>버림</>
 }

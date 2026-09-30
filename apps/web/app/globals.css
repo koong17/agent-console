@@ -251,6 +251,13 @@ tr.is-faint td {
   border-color: var(--ink);
   color: var(--canvas);
 }
+/* 위의 .button:hover 가 글자를 --ink 로 바꾸는데, 진한 버튼은 배경도 --ink 라 글자가 사라졌다(2026-09-30).
+   진한 버튼은 글자를 --canvas 로 두고 배경만 한 단계 옅게 해서 호버를 보인다. */
+.button.is-primary:hover:not(:disabled) {
+  background: var(--body);
+  border-color: var(--body);
+  color: var(--canvas);
+}
 .button.is-primary:disabled {
   background: var(--well);
   border-color: var(--hairline);
