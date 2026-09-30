@@ -1257,6 +1257,7 @@
                             "skills",
                             "gates",
                             "decisions",
+                            "messages",
                             "stats",
                             "unexplained",
                             "unknownTypes",
@@ -1376,6 +1377,16 @@
                               ]
                             },
                             "decisions": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "messages": {
                               "anyOf": [
                                 {
                                   "type": "integer"
@@ -1528,6 +1539,7 @@
                           "skills",
                           "gates",
                           "decisions",
+                          "messages",
                           "stats",
                           "unexplained",
                           "unknownTypes",
@@ -1647,6 +1659,16 @@
                             ]
                           },
                           "decisions": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "messages": {
                             "anyOf": [
                               {
                                 "type": "integer"

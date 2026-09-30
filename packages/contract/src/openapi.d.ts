@@ -641,6 +641,7 @@ export interface paths {
                                 skills: number | null;
                                 gates: number | null;
                                 decisions: number | null;
+                                messages: number | null;
                                 stats: {
                                     transcripts: {
                                         lines: number;
@@ -682,6 +683,7 @@ export interface paths {
                                 skills: number | null;
                                 gates: number | null;
                                 decisions: number | null;
+                                messages: number | null;
                                 stats: {
                                     transcripts: {
                                         lines: number;

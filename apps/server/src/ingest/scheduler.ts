@@ -75,6 +75,7 @@ const IngestRun = Type.Object({
   skills: Nullable(Type.Integer()),
   gates: Nullable(Type.Integer()),
   decisions: Nullable(Type.Integer()),
+  messages: Nullable(Type.Integer()),
   // 이 열이 생기기 전 실행(그리고 running/failed 행)은 null 이다.
   stats: Nullable(IngestStatsSchema),
   // stats 에서 계산한 값. 열이 아니라 응답에서 만든다.
@@ -140,6 +141,7 @@ export function ingestScheduler(app: App, { schedule = true }: Options = {}) {
           skills: s.skills,
           gates: s.gates,
           decisions: s.decisions,
+          messages: s.messages,
           stats: s.stats,
           // 성공했으면 error 를 지운다. 안 지우면 stale 정리나 재시작 정리가 먼저
           // 찍어둔 메시지가 남아 "done 인데 오류가 달린 행"이 된다(2026-09-29 실제 1건).

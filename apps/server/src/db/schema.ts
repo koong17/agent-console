@@ -330,6 +330,10 @@ export const ingestRuns = pgTable('ingest_runs', {
   skills: integer('skills'),
   gates: integer('gates'),
   decisions: integer('decisions'),
+  // 새로 들어온 대화 본문 행 수(messages). 2026-09-30 에 생긴 열이라 그 전 실행은 null 이다.
+  // 사람 메시지와 에이전트 글을 합친 수라 "사람 메시지를 못 알아본다"는 이 숫자로는 안 보인다 —
+  // 에이전트 글이 계속 들어와서 0이 되지 않는다. 그 고장은 따로 잡아야 한다.
+  messages: integer('messages'),
   // 열을 열한 개 더 늘리지 않고 jsonb 하나에 둔다. 어떤 카운터가 실제로 드리프트를
   // 잡아내는지 아직 모르고, 카운터가 바뀔 때마다 스키마를 흔들고 싶지 않다.
   // 대신 API 응답 스키마(scheduler.ts)에서 필드 이름을 전부 못박아 계약은 유지한다.
