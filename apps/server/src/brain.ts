@@ -22,7 +22,7 @@ import { Nullable } from './schemas.js'
 // 저장하지 않고 요청마다 계산한다. 파일 50개, git log 한 번이라 수십 ms. 추세가 필요해지면 일별
 // 스냅샷 테이블을 붙인다.
 
-const BRAIN_DIR = process.env.BRAIN_DIR ?? join(homedir(), 'workspace', 'suah-brain')
+export const BRAIN_DIR = process.env.BRAIN_DIR ?? join(homedir(), 'workspace', 'suah-brain')
 // AGENTS.md는 "inbox 정리 때 오래된 active 문서를 검토"라고만 하고 기한은 없다. 60일로 시작한다.
 const STALE_DAYS = 60
 const CADENCE_WEEKS = 8
