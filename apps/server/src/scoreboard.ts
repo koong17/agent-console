@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { DateTime } from './schemas.js'
 import { db } from './db/index.js'
-import { correctionReplays, decisionKinds, decisions, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
+import { correctionReplays, decisionKinds, decisionPolicies, decisions, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
 import { strip } from './jobs/shadow-predict.js'
 
 // 대체 로드맵의 점수판(/scoreboard). 브레인이 수아를 얼마나 대신하고 있나를 숫자로 본다.
@@ -105,6 +105,28 @@ const Phases = Type.Object({
   ),
 })
 const PHASE_MIN_MESSAGES = 20
+
+// 드리프트: 같은 질문 종류에서 수아의 답 정책이 시간이 지나며 바뀌었나.
+// 결정을 시간순으로 반으로 나눠, 앞쪽과 뒤쪽에서 가장 많이 나온 정책을 비교한다.
+// 반씩 나누는 이유: 기준 날짜를 정하면 종류마다 결정이 몰린 시기가 달라 한쪽이 비기 쉽다.
+// 한계: 결정이 4~5개면 반쪽이 두세 개라, 한 번 다르게 답한 것도 드리프트로 보인다. 그래서 개수를 같이 낸다.
+const DRIFT_MIN = 4
+const Drift = Type.Object({
+  minDecisions: Type.Integer(),
+  kinds: Type.Array(
+    Type.Object({
+      kind: Type.String(),
+      n: Type.Integer(),
+      early: Type.String(),
+      earlyCount: Type.Integer(),
+      late: Type.String(),
+      lateCount: Type.Integer(),
+      drifted: Type.Boolean(),
+      firstAt: DateTime,
+      lastAt: DateTime,
+    }),
+  ),
+})
 
 const CALIBRATION_BUCKETS = 5
 // 틀린 예측 목록의 길이. 읽을 것이지 훑을 것이 아니라서 짧게.
@@ -438,5 +460,43 @@ export function scoreboardRoutes(app: App) {
       minMessages: PHASE_MIN_MESSAGES,
       phases: result.rows.map((r) => ({ phase: r.phase, messages: Number(r.messages), correction: Number(r.correction), redirect: Number(r.redirect) })),
     }
+  })
+
+  app.get('/scoreboard/drift', { schema: { response: { 200: Drift } } }, async () => {
+    const rows = await db
+      .select({ kind: decisionPolicies.kind, policy: decisionPolicies.policy, ts: decisions.ts })
+      .from(decisionPolicies)
+      .innerJoin(decisions, sql`${decisions.id} = ${decisionPolicies.decisionId}`)
+      .orderBy(sql`${decisionPolicies.kind}, ${decisions.ts}`)
+    const byKind = new Map<string, Array<{ policy: string; ts: Date }>>()
+    for (const r of rows) byKind.set(r.kind, [...(byKind.get(r.kind) ?? []), { policy: r.policy, ts: r.ts }])
+    // 가장 많이 나온 정책. 동점이면 더 나중에 나온 쪽 — 최근 판단을 앞세운다.
+    const mode = (xs: string[]) => {
+      const c = new Map<string, number>()
+      xs.forEach((x) => c.set(x, (c.get(x) ?? 0) + 1))
+      let best = xs.at(-1)!
+      for (const [k, v] of c) if (v > c.get(best)! || (v === c.get(best)! && xs.lastIndexOf(k) > xs.lastIndexOf(best))) best = k
+      return { policy: best, count: c.get(best)! }
+    }
+    const kinds = [...byKind]
+      .filter(([, xs]) => xs.length >= DRIFT_MIN)
+      .map(([kind, xs]) => {
+        const half = Math.floor(xs.length / 2)
+        const early = mode(xs.slice(0, half).map((x) => x.policy))
+        const late = mode(xs.slice(half).map((x) => x.policy))
+        return {
+          kind,
+          n: xs.length,
+          early: early.policy,
+          earlyCount: early.count,
+          late: late.policy,
+          lateCount: late.count,
+          drifted: early.policy !== late.policy,
+          firstAt: xs[0]!.ts,
+          lastAt: xs.at(-1)!.ts,
+        }
+      })
+      .sort((a, b) => Number(b.drifted) - Number(a.drifted) || b.n - a.n)
+    return { minDecisions: DRIFT_MIN, kinds }
   })
 }

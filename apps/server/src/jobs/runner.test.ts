@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { correctionReplays, decisions, decisionKinds, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
+import { answerPolicies, correctionReplays, decisionPolicies, decisions, decisionKinds, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
 import { claim, drain, enqueue, recoverStale } from './runner.js'
 import { KIND, enqueueUnclassified, questionKindHandler } from './question-kind.js'
 
@@ -72,7 +72,7 @@ before(async () => {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
+    sql`truncate ${decisionPolicies}, ${answerPolicies}, ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
   )
   await rm(join(dir, 'calls'), { recursive: true, force: true })
   await mkdir(join(dir, 'calls'))
@@ -369,5 +369,60 @@ describe('message-intent', () => {
 
     assert.equal(s.failed, 1)
     assert.equal((await db.select().from(messageIntents)).length, 0)
+  })
+})
+
+describe('answer-policy', () => {
+  let ap: typeof import('./answer-policy.js')
+  before(async () => {
+    ap = await import('./answer-policy.js')
+  })
+
+  // 종류 하나에 결정 둘. 답 라벨은 다르지만 같은 정책으로 묶인다. 답이 하나뿐인 종류는 안 넣는다.
+  async function seed() {
+    const [job] = await db.insert(llmJobs).values({ kind: 'question-kind', subject: 'seed', status: 'done', input: {} }).returning({ id: llmJobs.id })
+    await db.insert(questionKinds).values([
+      { name: '커밋 승인', description: '커밋할지', createdByJob: job!.id },
+      { name: '혼자', description: '답 하나', createdByJob: job!.id },
+    ])
+    const a = await decision('커밋할까요?', '2026-09-01T00:00:00Z', { options: ['커밋하고 push (추천)', '아직'], chosen: '커밋하고 push (추천)' })
+    const b = await decision('이거 올릴까요?', '2026-09-02T00:00:00Z', { options: ['feat 하나로 (추천)', '보류'], chosen: 'feat 하나로 (추천)' })
+    const c = await decision('혼자인 질문', '2026-09-03T00:00:00Z', { options: ['x', 'y'], chosen: 'x' })
+    await db.insert(decisionKinds).values([
+      { decisionId: a, kind: '커밋 승인', jobId: job!.id },
+      { decisionId: b, kind: '커밋 승인', jobId: job!.id },
+      { decisionId: c, kind: '혼자', jobId: job!.id },
+    ])
+    return { a, b }
+  }
+
+  test('종류 하나를 한 번에 묶고, 다시 돌리면 정책을 통째로 갈아 끼운다', async () => {
+    const { a, b } = await seed()
+    await replies([
+      ok({ policies: [{ name: '지금 올림', description: '바로 커밋한다' }], assignments: [{ id: a, policy: '지금 올림' }, { id: b, policy: '지금 올림' }] }),
+    ])
+
+    assert.equal(await ap.enqueueKinds(), 1) // '혼자'는 답이 하나라 빠진다
+    assert.equal(await ap.enqueueKinds(), 0) // 결정 목록이 그대로면 다시 안 들어간다
+    const s = await drain(ap.answerPolicyHandler)
+    assert.equal(s.done, 1)
+    // 표시는 지워서 보여준다
+    const [p] = await prompts()
+    assert.match(p!, /Suah chose: 커밋하고 push\n/)
+    assert.deepEqual((await db.select().from(decisionPolicies)).map((r) => r.policy), ['지금 올림', '지금 올림'])
+  })
+
+  test('배정이 빠지거나 목록에 없는 정책을 가리키면 종류 전체가 실패한다', async () => {
+    const { a, b } = await seed()
+    await replies([
+      ok({ policies: [{ name: '지금 올림', description: '-' }], assignments: [{ id: a, policy: '지금 올림' }, { id: b, policy: '없는 정책' }] }),
+    ])
+
+    await ap.enqueueKinds()
+    const s = await drain(ap.answerPolicyHandler)
+
+    assert.equal(s.failed, 1)
+    assert.equal((await db.select().from(answerPolicies)).length, 0)
+    assert.equal((await db.select().from(decisionPolicies)).length, 0)
   })
 })

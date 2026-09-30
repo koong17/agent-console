@@ -9,6 +9,7 @@ import * as questionKind from './question-kind.js'
 import * as shadowPredict from './shadow-predict.js'
 import * as messageIntent from './message-intent.js'
 import * as correctionReplay from './correction-replay.js'
+import * as answerPolicy from './answer-policy.js'
 import { exportKinds, KINDS_FILE } from './export-kinds.js'
 
 // 종류마다 handler 와 "넣을 대상 고르기" 하나씩.
@@ -17,6 +18,7 @@ const KINDS: Record<string, { handler: Handler<never, never>; enqueue: (limit?: 
   [shadowPredict.KIND]: { handler: shadowPredict.shadowPredictHandler as Handler<never, never>, enqueue: shadowPredict.enqueueEligible },
   [messageIntent.KIND]: { handler: messageIntent.messageIntentHandler as Handler<never, never>, enqueue: messageIntent.enqueueUnclassified },
   [correctionReplay.KIND]: { handler: correctionReplay.correctionReplayHandler as Handler<never, never>, enqueue: correctionReplay.enqueueCorrections },
+  [answerPolicy.KIND]: { handler: answerPolicy.answerPolicyHandler as Handler<never, never>, enqueue: answerPolicy.enqueueKinds },
 }
 
 const [kind, ...rest] = process.argv.slice(2)
@@ -36,10 +38,11 @@ try {
     console.log(
       `recovered=${recovered} retried=${retried} queued+${queued} done=${s.done} failed=${s.failed} cost=$${s.costUsd.toFixed(4)}`,
     )
-    if (kind === questionKind.KIND) {
+    if (kind === questionKind.KIND)
       for (const r of await questionKind.kindSummary()) console.log(`${String(r.n).padStart(4)}  ${r.kind}`)
+    // 둘 다 precedents 가 읽는 파일의 재료라 끝나면 다시 쓴다.
+    if (kind === questionKind.KIND || kind === answerPolicy.KIND)
       console.log(`exported ${await exportKinds()} → ${KINDS_FILE}`)
-    }
   }
 } finally {
   await pool.end()

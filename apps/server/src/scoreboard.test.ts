@@ -3,7 +3,10 @@ import assert from 'node:assert/strict'
 import { sql } from 'drizzle-orm'
 import { db, pool } from './db/index.js'
 import {
+  answerPolicies,
+  decisionPolicies,
   decisions,
+  questionKinds,
   llmJobs,
   messageIntents,
   messages,
@@ -103,5 +106,25 @@ describe('scoreboard', () => {
     const by = Object.fromEntries(r.phases.map((p: { phase: string; correction: number; messages: number }) => [p.phase, [p.messages, p.correction]]))
 
     assert.deepEqual(by, { '(none)': [1, 0], 'feature-plan': [1, 1], 'code-review': [1, 0] })
+  })
+  test('드리프트: 앞 절반과 뒤 절반의 정책이 다르면 바뀐 걸로 본다', async () => {
+    await db.insert(questionKinds).values({ name: '커밋', description: '-', createdByJob: jobId })
+    await db.insert(answerPolicies).values([
+      { kind: '커밋', name: '지금 올림', description: '-', jobId },
+      { kind: '커밋', name: '보류', description: '-', jobId },
+    ])
+    const seq = ['지금 올림', '지금 올림', '보류', '보류']
+    for (const [i, policy] of seq.entries()) {
+      const [d] = await db
+        .insert(decisions)
+        .values({ sessionId: 's1', ts: hoursAgo(10 - i), header: '', question: `q${i}`, options: ['a'], chosen: 'a' })
+        .returning({ id: decisions.id })
+      await db.insert(decisionPolicies).values({ decisionId: d!.id, kind: '커밋', policy, jobId })
+    }
+
+    const r = (await app.inject({ method: 'GET', url: '/scoreboard/drift' })).json()
+
+    assert.equal(r.kinds.length, 1)
+    assert.deepEqual([r.kinds[0].early, r.kinds[0].late, r.kinds[0].drifted], ['지금 올림', '보류', true])
   })
 })

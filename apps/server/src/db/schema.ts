@@ -304,6 +304,42 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// 답 정책. 같은 질문 종류 안의 답들을 "같은 판단"끼리 묶은 이름.
+//
+// 왜 필요한가: 질문 종류는 질문을 묶지만 답은 여전히 질문마다 문구가 다르다. "커밋하고 push" 와
+// "feat 커밋 하나로" 는 다른 라벨이라 precedents 는 이 둘을 다른 답으로 센다. 그래서 종류로 묶어도
+// settled(같은 답이 쌓임)가 거의 안 생겼다(2026-09-30: 76종류 중 1). 답을 정책으로 묶어야
+// "이 종류에서 수아는 늘 X 한다"와 "X 하다가 Y 로 바뀌었다(drift)"를 셀 수 있다.
+//
+// 종류 하나 = 작업 하나. 그 종류의 결정을 전부 한 번에 보여주고 정책 목록과 배정을 같이 받는다.
+// 결정마다 따로 물으면 question-kind 처럼 순서에 기대야 하는데, 종류 안의 결정은 많아야 수십 개라
+// 한 번에 보여주는 쪽이 일관되고 싸다. 종류가 다르면 서로 독립이라 동시에 돌려도 된다.
+export const answerPolicies = pgTable(
+  'answer_policies',
+  {
+    kind: text('kind')
+      .notNull()
+      .references(() => questionKinds.name),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    jobId: integer('job_id')
+      .notNull()
+      .references(() => llmJobs.id),
+  },
+  (t) => [uniqueIndex('answer_policies_kind_name').on(t.kind, t.name)],
+)
+
+export const decisionPolicies = pgTable('decision_policies', {
+  decisionId: integer('decision_id')
+    .primaryKey()
+    .references(() => decisions.id),
+  kind: text('kind').notNull(),
+  policy: text('policy').notNull(),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+})
+
 // 교정 되짚기. 교정 하나를 그 시점의 브레인에 비춰 "규칙이 없었나, 있는데 안 따랐나, 규칙이 틀렸나"를 가른다.
 //
 // 셋을 가르는 이유: 고치는 곳이 다르다. missing 이면 규칙을 새로 쓰고, ignored 면 규칙이 읽히는

@@ -11,16 +11,24 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { decisionKinds, decisions, questionKinds } from '../db/schema.js'
+import { decisionKinds, decisionPolicies, decisions, questionKinds } from '../db/schema.js'
 
 export const KINDS_FILE = process.env.QUESTION_KINDS_FILE ?? join(homedir(), '.claude', 'question-kinds.json')
 
 export async function exportKinds(path = KINDS_FILE) {
   const kinds = await db.select({ name: questionKinds.name, description: questionKinds.description }).from(questionKinds)
   const rows = await db
-    .select({ sessionId: decisions.sessionId, ts: decisions.ts, question: decisions.question, kind: decisionKinds.kind })
+    .select({
+      sessionId: decisions.sessionId,
+      ts: decisions.ts,
+      question: decisions.question,
+      kind: decisionKinds.kind,
+      policy: decisionPolicies.policy,
+    })
     .from(decisionKinds)
     .innerJoin(decisions, eq(decisions.id, decisionKinds.decisionId))
+    // 답 정책(answer-policy)이 있으면 같이 싣는다. precedents 는 정책이 있으면 답 라벨 대신 정책으로 settled 를 판정한다.
+    .leftJoin(decisionPolicies, eq(decisionPolicies.decisionId, decisions.id))
   const body = {
     generatedAt: new Date().toISOString(),
     kinds: Object.fromEntries(kinds.map((k) => [k.name, k.description])),
@@ -29,6 +37,7 @@ export async function exportKinds(path = KINDS_FILE) {
       ts: Math.floor(r.ts.getTime() / 1000),
       question: r.question,
       kind: r.kind,
+      policy: r.policy,
     })),
   }
   // 임시 파일에 쓰고 이름을 바꾼다. precedents 가 쓰는 도중의 반쪽 파일을 읽지 않게 한다 —

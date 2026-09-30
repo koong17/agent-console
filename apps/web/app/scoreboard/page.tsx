@@ -9,6 +9,7 @@ type Interventions = ApiData<'/scoreboard/interventions'>
 type Corrections = ApiData<'/scoreboard/corrections'>
 type Evals = ApiData<'/scoreboard/evals'>
 type Phases = ApiData<'/scoreboard/phases'>
+type Drift = ApiData<'/scoreboard/drift'>
 const mark = (p: boolean | null) => (p === null ? '-' : p ? 'pass' : 'fail')
 type Counts = Interventions['total']['counts']
 
@@ -28,14 +29,16 @@ export default async function ScoreboardPage() {
   let cr: Corrections
   let ev: Evals
   let ph: Phases
+  let dr: Drift
   try {
-    ;[minutes, shadow, iv, cr, ev, ph] = await Promise.all([
+    ;[minutes, shadow, iv, cr, ev, ph, dr] = await Promise.all([
       unwrapAsync(api.GET('/scoreboard/minutes')),
       unwrapAsync(api.GET('/scoreboard/shadow')),
       unwrapAsync(api.GET('/scoreboard/interventions')),
       unwrapAsync(api.GET('/scoreboard/corrections')),
       unwrapAsync(api.GET('/scoreboard/evals')),
       unwrapAsync(api.GET('/scoreboard/phases')),
+      unwrapAsync(api.GET('/scoreboard/drift')),
     ])
   } catch (err) {
     return <ErrorState title="scoreboard" error={err} />
@@ -328,6 +331,47 @@ export default async function ScoreboardPage() {
           </div>
         </section>
       )}
+      {dr.kinds.length > 0 && (
+        <section>
+          <h2>drift</h2>
+          <p className="summary">
+            답 정책이 바뀐 질문 종류 <strong>{dr.kinds.filter((k) => k.drifted).length}</strong>개 / 결정{' '}
+            {dr.minDecisions}개 이상인 종류 {dr.kinds.length}개. 결정을 시간순으로 반씩 나눠 앞뒤에서 가장 많이 나온 정책을
+            비교해요. 결정이 적은 종류는 한 번 다르게 답한 것도 바뀐 걸로 보여요 — 개수를 같이 보세요.
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>kind</th>
+                  <th className="num">n</th>
+                  <th>earlier</th>
+                  <th>later</th>
+                  <th>first</th>
+                  <th>last</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dr.kinds.map((k) => (
+                  <tr key={k.kind}>
+                    <td>{k.kind}</td>
+                    <td className="num">{k.n}</td>
+                    <td className="wrap">
+                      {k.early} <span className="cell-zero">×{k.earlyCount}</span>
+                    </td>
+                    <td className={k.drifted ? 'wrap status-warning' : 'wrap'}>
+                      {k.late} <span className="cell-zero">×{k.lateCount}</span>
+                    </td>
+                    <td className="mono">{fmtMinute(String(k.firstAt)).slice(0, 10)}</td>
+                    <td className="mono">{fmtMinute(String(k.lastAt)).slice(0, 10)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <section>
         <h2>evals</h2>
         {ev.models.length === 0 ? (

@@ -2035,6 +2035,79 @@
         }
       }
     },
+    "/scoreboard/drift": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "minDecisions",
+                    "kinds"
+                  ],
+                  "properties": {
+                    "minDecisions": {
+                      "type": "integer"
+                    },
+                    "kinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "n",
+                          "early",
+                          "earlyCount",
+                          "late",
+                          "lateCount",
+                          "drifted",
+                          "firstAt",
+                          "lastAt"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "n": {
+                            "type": "integer"
+                          },
+                          "early": {
+                            "type": "string"
+                          },
+                          "earlyCount": {
+                            "type": "integer"
+                          },
+                          "late": {
+                            "type": "string"
+                          },
+                          "lateCount": {
+                            "type": "integer"
+                          },
+                          "drifted": {
+                            "type": "boolean"
+                          },
+                          "firstAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "lastAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {
