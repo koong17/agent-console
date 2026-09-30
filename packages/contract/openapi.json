@@ -2445,6 +2445,126 @@
         }
       }
     },
+    "/audit/solo": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "extracted",
+                    "answered",
+                    "agree",
+                    "today"
+                  ],
+                  "properties": {
+                    "extracted": {
+                      "type": "integer",
+                      "description": "뽑아 둔 결정 전체"
+                    },
+                    "answered": {
+                      "type": "integer"
+                    },
+                    "agree": {
+                      "type": "integer"
+                    },
+                    "today": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ts",
+                          "summary",
+                          "alternative",
+                          "context"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "ts": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "alternative": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit/solo/{id}/{verdict}": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "agree"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "disagree"
+                  ]
+                }
+              ]
+            },
+            "in": "path",
+            "name": "verdict",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {

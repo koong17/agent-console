@@ -13,6 +13,7 @@ import {
   sessions,
   shadowPredictions,
   skillInvocations,
+  soloDecisions,
 } from './db/schema.js'
 import { buildApp } from './app.js'
 
@@ -126,5 +127,21 @@ describe('scoreboard', () => {
 
     assert.equal(r.kinds.length, 1)
     assert.deepEqual([r.kinds[0].early, r.kinds[0].late, r.kinds[0].drifted], ['지금 올림', '보류', true])
+  })
+  test('감사: 답하지 않은 결정만 오늘의 목록에 오고, 판정은 한 번만 쓴다', async () => {
+    await db.insert(messages).values({ id: 'a1', sessionId: 's1', ts: hoursAgo(3), kind: 'assistant', text: '격리는 별도 DB 로 했어요' })
+    await db.insert(soloDecisions).values([
+      { messageId: 'a1', idx: 0, summary: '별도 DB 로 격리했다', alternative: '롤백', jobId },
+      { messageId: 'a1', idx: 1, summary: '파일을 하나씩 돌렸다', alternative: '동시 실행', jobId },
+    ])
+    const [first] = await db.select().from(soloDecisions).orderBy(soloDecisions.idx)
+
+    const agree = await app.inject({ method: 'POST', url: `/audit/solo/${first!.id}/agree` })
+    const again = await app.inject({ method: 'POST', url: `/audit/solo/${first!.id}/disagree` })
+    const r = (await app.inject({ method: 'GET', url: '/audit/solo' })).json()
+
+    assert.deepEqual([agree.json().ok, again.json().ok], [true, false]) // 두 번째 판정은 무시된다
+    assert.deepEqual([r.extracted, r.answered, r.agree], [2, 1, 1])
+    assert.deepEqual(r.today.map((d: { summary: string }) => d.summary), ['파일을 하나씩 돌렸다'])
   })
 })

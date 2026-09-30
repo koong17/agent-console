@@ -304,6 +304,35 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// 에이전트가 묻지 않고 혼자 정한 결정. 로드맵 2단계의 "침묵을 동의로 읽지 않기" 장치.
+//
+// 왜 필요한가: 예측 점수와 교정은 수아가 "뭔가 말한" 곳만 본다. 에이전트가 혼자 정하고 수아가
+// 아무 말 안 한(또는 "좋아" 하고 넘어간) 결정은 어디에도 안 잡힌다. 그 침묵이 동의였는지, 못 보고 지나친
+// 건지는 수아에게 직접 물어야 안다. 전부 물을 수는 없으니 무작위로 조금씩 뽑아 묻는다.
+//
+// 출처: 메인 대화의 에이전트 글 가운데, 바로 다음 수아 메시지가 교정·방향 전환이 아닌 것.
+export const soloDecisions = pgTable(
+  'solo_decisions',
+  {
+    id: serial('id').primaryKey(),
+    // 결정이 적힌 에이전트 글(messages.id). 글 하나에 결정이 여럿일 수 있다(idx).
+    messageId: text('message_id')
+      .notNull()
+      .references(() => messages.id),
+    idx: integer('idx').notNull(),
+    summary: text('summary').notNull(),
+    // 에이전트가 고르지 않은 다른 길. 수아가 "다르게 했을 것"을 고를 때 무엇과 비교하는지 보여준다.
+    alternative: text('alternative').notNull(),
+    jobId: integer('job_id')
+      .notNull()
+      .references(() => llmJobs.id),
+    // 수아의 판정. null = 아직 안 물음.
+    verdict: text('verdict', { enum: ['agree', 'disagree'] }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [uniqueIndex('solo_decisions_message_idx').on(t.messageId, t.idx)],
+)
+
 // eval 케이스 초안. 교정 되짚기에서 "규칙 없음/규칙 무시"로 나온 교정을 suah-brain 의
 // evals/cases 형식으로 옮긴 것. 콘솔이 브레인 레포에 무언가를 쓰는 첫 경로다.
 //
