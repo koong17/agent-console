@@ -315,8 +315,10 @@ export default async function ScoreboardPage() {
                     <td className="mono">{fmtMinute(String(m.ts))}</td>
                     <td>{m.kind ?? '-'}</td>
                     <td className="wrap">{m.question}</td>
-                    <td>{m.predicted}</td>
-                    <td>{m.chosen}</td>
+                    {/* 선택지 라벨은 보통 짧지만 여기선 30자를 넘는 게 흔해서(측정: 최대 35자) nowrap 이면
+                        두 열이 530px 를 먹고 표가 넘친다. 이 표에서만 줄바꿈을 허용한다. */}
+                    <td className="wrap">{m.predicted}</td>
+                    <td className="wrap">{m.chosen}</td>
                     <td className="num">{Math.round(m.confidence * 100)}%</td>
                     <td className="wrap">{m.reason}</td>
                   </tr>
