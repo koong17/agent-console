@@ -671,6 +671,7 @@ export interface paths {
                                         unknownType: number;
                                         incomplete: number;
                                         memoryDeny?: number;
+                                        slackVoiceGate?: number;
                                     };
                                 } | null;
                                 unexplained: number | null;
@@ -713,6 +714,7 @@ export interface paths {
                                         unknownType: number;
                                         incomplete: number;
                                         memoryDeny?: number;
+                                        slackVoiceGate?: number;
                                     };
                                 } | null;
                                 unexplained: number | null;

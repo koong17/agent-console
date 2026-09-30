@@ -78,6 +78,7 @@ const IngestStatsSchema = Type.Object({
     unknownType: Type.Integer(),
     incomplete: Type.Integer(),
     memoryDeny: Type.Optional(Type.Integer()),
+    slackVoiceGate: Type.Optional(Type.Integer()),
   }),
 })
 

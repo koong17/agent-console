@@ -22,7 +22,7 @@ const EVENTS_PATH = join(homedir(), '.claude', 'harness-events.jsonl')
 // type으로 갈라 읽으므로 타입별 필드는 optional로 둔다.
 type EventLine = {
   ts: number
-  type: 'skill' | 'gate' | 'decision' | 'memory-deny'
+  type: 'skill' | 'gate' | 'decision' | 'memory-deny' | 'slack-voice-gate'
   session_id: string
   cwd?: string
   // skill, gate
@@ -52,6 +52,7 @@ export async function ingestEvents(): Promise<EventsSummary> {
     unknownType: 0,
     incomplete: 0,
     memoryDeny: 0,
+    slackVoiceGate: 0,
   }
 
   try {
@@ -103,6 +104,10 @@ export async function ingestEvents(): Promise<EventsSummary> {
       } else if (e.type === 'memory-deny') {
         // memory-type-gate.sh 가 교정·선호를 프로젝트 메모리에 쓰려는 시도를 막은 기록. 건수만 본다.
         stats.memoryDeny++
+      } else if (e.type === 'slack-voice-gate') {
+        // 남의 채널에 수아 이름으로 글을 보내기 전 말투 확인 훅(2026-09-30, suah-brain 쪽에서 추가).
+        // 적재는 건수만. 판정(asked/allowed/denied)별 집계가 필요해지면 표를 만든다.
+        stats.slackVoiceGate++
       } else {
         // 훅이 새 type 을 남기기 시작했는데 우리가 아직 안 읽고 있다는 뜻이다.
         stats.unknownType++

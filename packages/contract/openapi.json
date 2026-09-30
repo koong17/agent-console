@@ -1509,6 +1509,9 @@
                                         },
                                         "memoryDeny": {
                                           "type": "integer"
+                                        },
+                                        "slackVoiceGate": {
+                                          "type": "integer"
                                         }
                                       }
                                     }
@@ -1790,6 +1793,9 @@
                                         "type": "integer"
                                       },
                                       "memoryDeny": {
+                                        "type": "integer"
+                                      },
+                                      "slackVoiceGate": {
                                         "type": "integer"
                                       }
                                     }

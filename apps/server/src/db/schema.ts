@@ -370,6 +370,7 @@ export type EventStats = {
   unknownType: number // 우리가 모르는 type (설명 안 됨)
   incomplete: number // 아는 type 인데 필수 필드가 없다 (설명 안 됨)
   memoryDeny: number // type=memory-deny. 교정·선호를 프로젝트 메모리에 쓰려다 훅에 막힌 횟수 (예상됨)
+  slackVoiceGate: number // type=slack-voice-gate. 대외 메시지 말투 확인 훅이 울린 횟수 (예상됨)
 }
 
 // 파서가 만들어 내는 모양. 카운터가 전부 있다.
@@ -384,7 +385,7 @@ export type IngestStats = { transcripts: TranscriptStats; events: EventStats }
 //
 // 카운터를 추가할 때 여기 Partial 목록과 scheduler.ts 의 Type.Optional 을 같이 늘린다.
 type LaterTranscriptKeys = 'toolResults' | 'toolResultsUnmatched'
-type LaterEventKeys = 'memoryDeny'
+type LaterEventKeys = 'memoryDeny' | 'slackVoiceGate'
 export type StoredIngestStats = {
   transcripts: Omit<TranscriptStats, LaterTranscriptKeys> &
     Partial<Pick<TranscriptStats, LaterTranscriptKeys>>
