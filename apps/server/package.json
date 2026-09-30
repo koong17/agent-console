@@ -10,7 +10,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
     "ingest": "tsx src/ingest/cli.ts",
-    "openapi:emit": "tsx src/openapi-emit.ts"
+    "openapi:emit": "tsx src/openapi-emit.ts",
+    "jobs": "tsx src/jobs/cli.ts"
   },
   "dependencies": {
     "@fastify/swagger": "^9.8.1",

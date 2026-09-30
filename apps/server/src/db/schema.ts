@@ -219,6 +219,76 @@ export const decisions = pgTable(
   (t) => [uniqueIndex('decisions_natural_key').on(t.sessionId, t.ts, t.question)],
 )
 
+// ---------------------------------------------------------------------------
+// LLM 작업. claude -p 호출 한 번이 한 줄이다.
+//
+// 표로 두는 이유: 호출 하나에 수 초~수십 초가 걸리고 돈이 든다. 메모리에만 두면
+// 프로세스가 죽을 때 "무엇을 이미 했나"가 사라져서 다시 돌리면 같은 호출에 또 돈을 쓴다.
+// (kind, subject) 가 고유해서 같은 대상에 같은 작업을 두 번 넣을 수 없다.
+// ---------------------------------------------------------------------------
+export const llmJobs = pgTable(
+  'llm_jobs',
+  {
+    id: serial('id').primaryKey(),
+    // 작업 종류. 'question-kind' 등. 종류마다 handler 가 하나 있다(src/jobs/).
+    kind: text('kind').notNull(),
+    // 작업 대상의 식별자. question-kind 면 decisions.id. 문자열인 이유: 종류마다 대상 표가 다르다.
+    subject: text('subject').notNull(),
+    status: text('status', { enum: ['queued', 'running', 'done', 'failed'] }).notNull(),
+    // 넣을 때 정해지는 재료. 프롬프트는 여기 없다 — 실행 시점에 만든다(아래 prompt).
+    input: jsonb('input').notNull(),
+    model: text('model'),
+    // 실제로 보낸 프롬프트. 실행 시점의 상태(지금까지 만들어진 종류 목록 등)가 들어가므로
+    // 넣을 때가 아니라 돌릴 때 채운다. 나중에 "왜 이렇게 답했나"를 볼 수 있는 유일한 기록이다.
+    prompt: text('prompt'),
+    output: jsonb('output'),
+    error: text('error'),
+    // claude -p 가 돌려주는 total_cost_usd. 구독으로 돌려도 API 환산값이 온다.
+    costUsd: numeric('cost_usd', { precision: 10, scale: 6 }),
+    attempts: integer('attempts').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('llm_jobs_kind_subject').on(t.kind, t.subject),
+    // 실행기가 매번 묻는 질문이 "이 종류에서 가장 오래 기다린 queued 는?" 이다.
+    index('llm_jobs_kind_status_idx').on(t.kind, t.status, t.id),
+  ],
+)
+
+// 질문 종류. 에이전트가 수아에게 한 질문을 "같은 답이 통하는 묶음"으로 나눈 이름.
+//
+// 왜 필요한가: precedents.mjs 는 질문을 글자 겹침으로 묶는다. 같은 뜻을 다른 말로 물으면
+// 다른 종류가 되어서, 2026-09-30 기준 답 196개가 종류 152개로 흩어졌다. 한 종류에 답이 2개
+// 이상 쌓여야 "정해진 답"이 되는데 그럴 일이 거의 없었다. 뜻으로 묶으면 모인다.
+//
+// 종류는 미리 정해 두지 않는다. 분류하면서 처음 보는 뜻이 나오면 새 종류를 만든다.
+export const questionKinds = pgTable('question_kinds', {
+  name: text('name').primaryKey(),
+  description: text('description').notNull(),
+  // 이 종류를 처음 만든 작업. 어떤 질문을 보고 생겼는지 거슬러 갈 수 있다.
+  createdByJob: integer('created_by_job').references(() => llmJobs.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// 결정 하나가 어느 종류인가. decisions 에 열을 더하지 않고 따로 두는 이유:
+// decisions 는 훅 로그에서 적재되는 원본이고, 이건 LLM 이 만든 파생값이다.
+// 섞어 두면 "원본을 다시 적재"와 "분류를 다시 돌림"이 서로를 덮는다.
+export const decisionKinds = pgTable('decision_kinds', {
+  decisionId: integer('decision_id')
+    .primaryKey()
+    .references(() => decisions.id),
+  kind: text('kind')
+    .notNull()
+    .references(() => questionKinds.name),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+})
+
+export type LlmJob = typeof llmJobs.$inferSelect
+
 export type Session = typeof sessions.$inferSelect
 export type Turn = typeof turns.$inferSelect
 export type SkillInvocation = typeof skillInvocations.$inferSelect
