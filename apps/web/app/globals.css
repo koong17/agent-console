@@ -182,6 +182,9 @@ th {
    행 높이 36px은 최소값이라 늘어난다. 긴 문장을 nowrap으로 두면 표 전체가 가로 스크롤에 갇힌다. */
 td.wrap {
   white-space: normal;
+  /* 띄어쓰기 없는 긴 토큰(상자 그림 ─── 이나 긴 경로)은 normal 로도 안 꺾인다. 한 교정 문장이
+     939px 짜리 상자 그림을 품고 있어 표가 넘쳤다(2026-09-30). 그런 토큰만 아무 데서나 꺾는다. */
+  overflow-wrap: anywhere;
   max-width: 480px;
   padding-top: 8px;
   padding-bottom: 8px;
