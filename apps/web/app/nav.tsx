@@ -10,6 +10,7 @@ const items = [
   { href: '/harness', label: 'harness' },
   { href: '/decisions', label: 'decisions' },
   { href: '/scoreboard', label: 'scoreboard' },
+  { href: '/drafts', label: 'drafts' },
 ]
 
 // 현재 페이지 표시에 usePathname이 필요해서 클라이언트 컴포넌트다.

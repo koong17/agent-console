@@ -192,5 +192,9 @@ Vercel 마케팅 사이트는 성공 색을 blue로 겸용한다. 우리는 상�
 | `.chart-max` | `.chart` 안 | 우상단 최댓값 caption |
 | `.chart.is-dense` | `.chart` 에 함께 | 열이 수백 개인 차트. gap 0, 열 최소폭 1px. 막대가 아니라 곡선으로 읽힌다 |
 | `.chart-col.is-sub` | `.chart-col` 에 함께 | 서브에이전트 턴. 별도 컨텍스트 창. `--link-soft` |
+| `.button` | `<button>` | 높이 28, hairline-strong 테두리, 반경 6. disabled 는 `--faint` |
+| `.button.is-primary` | `<button>` 에 함께 | 되돌리기 어려운 쪽(파일을 씀)만. `--ink` 면. accent 는 안 쓴다 |
+| `.inline-form` | `<form>` | 버튼 하나를 감싼 form 을 한 줄로. 옆 form 과 간격 8 |
+| `pre.block` | `<pre>` | 긴 원문 블록. elevated 면, hairline, Mono 12. 표 셀에서는 `<details>` 안에 |
 
 `h1`, `h2`, `table`, `th`, `td`, `code`, `a`는 태그 자체에 스타일이 있어 클래스가 필요 없다.

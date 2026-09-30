@@ -221,6 +221,59 @@ tr.is-faint td {
   background: var(--link);
 }
 
+/* 버튼. 콘솔의 첫 쓰기 동작(eval 초안 저장/버리기)에서 생겼다.
+   기본은 hairline 테두리의 조용한 버튼, 되돌리기 어려운 쪽(파일을 쓰는 쪽)만 .is-primary 로 ink 면을 칠한다.
+   accent(--link)를 쓰지 않는 이유: accent 는 링크와 선택에만 쓴다(DESIGN.md 1절). */
+.button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--elevated);
+  color: var(--body);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.button:hover:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.button:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+.button.is-primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--canvas);
+}
+.button.is-primary:disabled {
+  background: var(--well);
+  border-color: var(--hairline);
+  color: var(--faint);
+}
+/* 버튼 하나씩 감싼 form 을 한 줄에 둔다. 서버 액션은 form 단위라 버튼마다 form 이 생긴다. */
+.inline-form {
+  display: inline;
+}
+.inline-form + .inline-form {
+  margin-left: 8px;
+}
+/* 긴 원문(마크다운 초안 등)을 그대로 보여주는 블록. 표 셀 안에서 details 로 펼친다. */
+pre.block {
+  margin: 8px 0 0;
+  padding: 12px;
+  background: var(--elevated);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--body);
+  font-family: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+}
+
 /* 상태 */
 .state {
   color: var(--mute);

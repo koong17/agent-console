@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { answerPolicies, correctionReplays, decisionPolicies, decisions, decisionKinds, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
+import { answerPolicies, correctionReplays, decisionPolicies, decisions, decisionKinds, evalDrafts, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
 import { claim, drain, enqueue, recoverStale } from './runner.js'
 import { KIND, enqueueUnclassified, questionKindHandler } from './question-kind.js'
 
@@ -72,7 +72,7 @@ before(async () => {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${decisionPolicies}, ${answerPolicies}, ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
+    sql`truncate ${evalDrafts}, ${decisionPolicies}, ${answerPolicies}, ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
   )
   await rm(join(dir, 'calls'), { recursive: true, force: true })
   await mkdir(join(dir, 'calls'))
@@ -305,6 +305,58 @@ describe('shadow-predict', () => {
     const modes = (await db.select().from(evalRuns)).map((r) => r.mode).sort()
     assert.deepEqual(modes, ['baseline', 'full'])
     assert.equal((await db.select().from(evalResults)).length, 2)
+  })
+
+  // eval 초안 → 브레인 레포 파일. 이 describe 안에서만 돈다: BRAIN_DIR 이 임시 레포를 가리키는 곳이다.
+  // 밖에서 돌면 진짜 suah-brain/evals/cases 에 파일이 생긴다.
+  test('eval 초안: 동시에 두 번 눌러도 파일은 하나, 있는 파일은 안 덮고, 규칙 무시는 그 규칙을 지킨다', async () => {
+    await db.execute(sql`truncate ${messages}, ${sessions} cascade`)
+    await db.insert(sessions).values({ id: 's1', cwd: '/r', repo: 'r', startedAt: new Date(), lastSeenAt: new Date() })
+    await db.insert(messages).values([
+      { id: 'c1', sessionId: 's1', ts: new Date('2026-09-10T00:01:00Z'), kind: 'typed', text: '왜 물어보지도 않고 커밋해' },
+      { id: 'c2', sessionId: 's1', ts: new Date('2026-09-10T00:02:00Z'), kind: 'typed', text: '화면 확인 안 했잖아' },
+    ])
+    const [seed] = await db.insert(llmJobs).values({ kind: 'correction-replay', subject: 'seed', status: 'done', input: {} }).returning({ id: llmJobs.id })
+    await db.insert(correctionReplays).values([
+      { messageId: 'c1', jobId: seed!.id, brainCommit: 'x', cause: 'ignored', rule: 'BI-10', reason: '-' },
+      { messageId: 'c2', jobId: seed!.id, brainCommit: 'x', cause: 'ignored', rule: 'BI-10', reason: '-' },
+    ])
+    await mkdir(join(brain, 'evals', 'cases'), { recursive: true })
+    // 같은 slug 두 번 → 두 번째는 -2 가 붙는다. 모델이 규칙을 빼먹어도 규칙 무시면 그 규칙이 채워진다.
+    const draft = { slug: 'ask-before-commit-always', title: 'Ask before commit', rules: [], scenario: 'S', expected: 'E', antiPattern: 'A' }
+    await replies([ok(draft), ok(draft)])
+    const ed = await import('./eval-draft.js')
+    await ed.enqueueReplays()
+    await drain(ed.evalDraftHandler)
+    const drafts = await db.select().from(evalDrafts).orderBy(evalDrafts.messageId)
+    assert.deepEqual(drafts.map((d) => d.caseId), ['bi-10-ask-before-commit-always', 'bi-10-ask-before-commit-always-2'])
+    assert.deepEqual(drafts[0]!.rules, ['BI-10'])
+    assert.match(drafts[0]!.body, /^---\nid: bi-10-ask-before-commit-always\nkind: eval\nstatus: draft\n/)
+
+    const { buildApp } = await import('../app.js')
+    const app = await buildApp({ ingest: false })
+    try {
+      const [x, y] = await Promise.all([
+        app.inject({ method: 'POST', url: '/evals/drafts/c1/accept' }),
+        app.inject({ method: 'POST', url: '/evals/drafts/c1/accept' }),
+      ])
+      assert.deepEqual([x.statusCode, y.statusCode].sort(), [200, 409])
+      const file = join(brain, 'evals', 'cases', 'bi-10-ask-before-commit-always.md')
+      assert.equal(await readFile(file, 'utf8'), drafts[0]!.body)
+
+      // 같은 이름의 파일이 이미 있으면 덮지 않고, 초안은 pending 으로 돌아간다
+      await writeFile(join(brain, 'evals', 'cases', 'bi-10-ask-before-commit-always-2.md'), 'MINE')
+      const z = await app.inject({ method: 'POST', url: '/evals/drafts/c2/accept' })
+      assert.equal(z.statusCode, 409)
+      assert.equal(await readFile(join(brain, 'evals', 'cases', 'bi-10-ask-before-commit-always-2.md'), 'utf8'), 'MINE')
+      const [c2] = await db.select().from(evalDrafts).where(eq(evalDrafts.messageId, 'c2'))
+      assert.equal(c2!.status, 'pending')
+
+      assert.equal((await app.inject({ method: 'POST', url: '/evals/drafts/c2/reject' })).statusCode, 200)
+      assert.equal((await app.inject({ method: 'POST', url: '/evals/drafts/c2/accept' })).statusCode, 409) // 이미 결정함
+    } finally {
+      await app.close()
+    }
   })
 
   test('선택지에 없는 답은 오답이 아니라 실패로 남는다', async () => {

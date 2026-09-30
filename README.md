@@ -40,6 +40,7 @@ apps/server/            Fastify + Drizzle + Postgres
   src/db/seed.ts          model_prices 초기값
   src/ingest/             transcript·훅 이벤트·브레인 평가 결과 읽어 DB에 넣기. scheduler.ts 가 주기 실행
   src/jobs/               LLM 작업(claude -p). runner.ts 가 llm_jobs 표를 큐로 쓴다. 종류마다 파일 하나
+  src/evals.ts            eval 초안 대기열. 콘솔의 첫 쓰기 경로(브레인 레포에 draft 파일)
   src/scoreboard.ts       대체 로드맵 점수판: 수아 분, 블라인드 재예측·보정, 개입, 교정 되짚기, 단계별, evals
   src/openapi-emit.ts     OpenAPI 스펙을 packages/contract 로 쓰기
 apps/web/               Next 16, 서버 컴포넌트가 Fastify를 직접 호출 (CORS 없음)
@@ -47,6 +48,7 @@ apps/web/               Next 16, 서버 컴포넌트가 Fastify를 직접 호출
   app/usage/              /usage     일별 비용, 레포별, 게이트 준수율, 스킬 주간 행렬
   app/sessions/           /sessions  세션 목록 → /sessions/[id] 응답별 토큰·비용
   app/scoreboard/         /scoreboard 브레인이 수아를 얼마나 대신하나
+  app/drafts/             /drafts    eval 초안 고르기. 서버 액션으로 Fastify 에 POST
   app/server.ts           openapi-fetch 클라이언트. 타입은 packages/contract 에서
   app/globals.css         디자인 토큰과 공용 클래스. 규칙은 DESIGN.md
 packages/contract/      openapi.json (서버가 생성) + openapi.d.ts (거기서 생성). 손으로 고치지 않음
@@ -72,6 +74,7 @@ scripts/, .githooks/    계약 신선도 검사 (아래)
 | `shadow_predictions` | 결정 하나의 블라인드 재예측 | `pnpm jobs shadow-predict` |
 | `message_intents` | 사람 메시지 하나의 개입 종류 | `pnpm jobs message-intent` |
 | `correction_replays` | 교정 하나의 원인(규칙 없음/무시/틀림) | `pnpm jobs correction-replay` |
+| `eval_drafts` | 교정 하나에서 만든 eval 케이스 초안 (pending/accepted/rejected) | `pnpm jobs eval-draft`, 저장은 /drafts |
 | `answer_policies`, `decision_policies` | 질문 종류 안의 답을 판단(정책)으로 묶은 것 | `pnpm jobs answer-policy` |
 | `eval_runs`, `eval_results` | 브레인 평가 실행과 케이스 결과 | `suah-brain/evals/results/*.json` |
 
@@ -93,10 +96,11 @@ scripts/, .githooks/    계약 신선도 검사 (아래)
 | 루트 | `pnpm format` | prettier |
 | apps/server | `pnpm ingest` | ingestion 수동 실행 (서버가 켜져 있으면 알아서 돈다) |
 | apps/server | `pnpm db:push` / `db:seed` / `db:studio` | 스키마 적용 / 단가표 / 브라우저 DB 뷰어 |
-| apps/server | `pnpm jobs <종류> [--limit N] [--retry-failed]` | LLM 작업 넣고 비우기. 종류: question-kind, shadow-predict, message-intent, correction-replay, answer-policy. 돈이 들어서 자동으로 안 돈다 |
+| apps/server | `pnpm jobs <종류> [--limit N] [--retry-failed]` | LLM 작업 넣고 비우기. 종류: question-kind, shadow-predict, message-intent, correction-replay, answer-policy, eval-draft. 돈이 들어서 자동으로 안 돈다 |
 | apps/server | `pnpm test` | DATABASE_URL을 `agent_console_test`로 고정하고, 파일을 하나씩(--test-concurrency=1) 돈다 |
 | apps/server | `pnpm test:db:push` | 테스트 DB에 스키마 적용. 스키마를 바꾸면 여기도 한 번 |
 | HTTP | `POST /ingest/run`, `GET /ingest/status` | 수동 트리거(202), 실행 이력 |
+| HTTP | `POST /evals/drafts/:id/accept`, `/reject` | 초안을 브레인 레포에 draft 파일로 저장(이미 있으면 409) / 버림 |
 
 ## 테스트
 
@@ -107,7 +111,7 @@ pnpm test:db:push               # 스키마를 바꿀 때마다
 pnpm test
 ```
 
-`src/**/*.test.ts` 56개(2026-09-30). 층으로 나뉜다.
+`src/**/*.test.ts` 57개(2026-09-30). 층으로 나뉜다.
 
 - `lines.test.ts`, `transcripts.test.ts` — DB를 안 쓴다. `parseFile`이 파일을 읽어 메모리에 행을 모으는 데까지가 그 층이고, 카운터 로직도 전부 거기 있다.
 - `ingest-file.test.ts` — DB를 쓴다. 트랜잭션·충돌 처리·멱등성은 여기서만 검증된다.

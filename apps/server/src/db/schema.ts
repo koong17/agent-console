@@ -304,6 +304,31 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// eval 케이스 초안. 교정 되짚기에서 "규칙 없음/규칙 무시"로 나온 교정을 suah-brain 의
+// evals/cases 형식으로 옮긴 것. 콘솔이 브레인 레포에 무언가를 쓰는 첫 경로다.
+//
+// 자동으로 쓰지 않는다. 수아가 화면에서 고르면(accept) 그때 파일 하나를 status: draft 로 만든다.
+// run-evals.mjs 는 status: active 만 돌리므로 draft 파일은 평가에 섞이지 않는다 — active 로 바꾸는 건
+// 브레인 세션의 몫이다. 버리면(reject) 표에만 남고 파일은 없다.
+export const evalDrafts = pgTable('eval_drafts', {
+  messageId: text('message_id')
+    .primaryKey()
+    .references(() => messages.id),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+  // 파일 이름이 될 id. evals/cases 의 기존 id 와 겹치지 않게 만든다(apply).
+  caseId: text('case_id').notNull(),
+  title: text('title').notNull(),
+  rules: jsonb('rules').$type<string[]>().notNull(),
+  // 파일에 그대로 쓸 마크다운 전체(frontmatter 포함).
+  body: text('body').notNull(),
+  status: text('status', { enum: ['pending', 'accepted', 'rejected'] }).notNull().default('pending'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  // accept 로 쓴 파일의 경로(브레인 레포 기준).
+  path: text('path'),
+})
+
 // 답 정책. 같은 질문 종류 안의 답들을 "같은 판단"끼리 묶은 이름.
 //
 // 왜 필요한가: 질문 종류는 질문을 묶지만 답은 여전히 질문마다 문구가 다르다. "커밋하고 push" 와
