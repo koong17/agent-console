@@ -178,6 +178,7 @@ Vercel 마케팅 사이트는 성공 색을 blue로 겸용한다. 우리는 상�
 | `.table-wrap` | `<table>`을 감싸는 div | 좁을 때 가로 스크롤 |
 | `.num` | `<th>`, `<td>` | 숫자 열: 우측 정렬, Mono, tabular-nums |
 | `tr.is-error` | `<tr>` | 강조 행. 텍스트 전체 `--error` |
+| `tr.align-top` | `<tr>` | 칸을 위로 맞춤. 길이가 다른 글 두 개를 나란히 비교하는 행 |
 | `tr.is-faint` | `<tr>` | 표본이 적어 판단에 쓰지 말라는 행. 텍스트 전체 `--faint`(첫 열 포함) |
 | `td.wrap` | 문장이 들어가는 `<td>` | nowrap 해제, 최대 폭 480, 세로 패딩 8, 긴 토큰은 아무 데서나 꺾음(`overflow-wrap: anywhere`). 질문처럼 문장인 열에만. 짧은 라벨 열은 그대로 nowrap |
 | `.status-warning` | 셀 안 텍스트 | 경고 한 단계 아래 신호(quiet 등). `--warning-deep` |
@@ -195,6 +196,7 @@ Vercel 마케팅 사이트는 성공 색을 blue로 겸용한다. 우리는 상�
 | `.button` | `<button>` | 높이 28, hairline-strong 테두리, 반경 6. disabled 는 `--faint` |
 | `.button.is-primary` | `<button>` 에 함께 | 되돌리기 어려운 쪽(파일을 씀)만. `--ink` 면. accent 는 안 쓴다 |
 | `.inline-form` | `<form>` | 버튼 하나를 감싼 form 을 한 줄로. 옆 form 과 간격 8 |
+| `.stack` | `<td>` | 안의 `.inline-form` 을 세로로 쌓음(간격 6). 글 두 개를 나란히 놓는 표의 좁은 버튼 열 |
 | `pre.block` | `<pre>` | 긴 원문 블록. elevated 면, hairline, Mono 12. 표 셀에서는 `<details>` 안에 |
 
 `h1`, `h2`, `table`, `th`, `td`, `code`, `a`는 태그 자체에 스타일이 있어 클래스가 필요 없다.

@@ -5,6 +5,7 @@ import { db, pool } from './db/index.js'
 import {
   answerPolicies,
   decisionPolicies,
+  drillPairs,
   decisions,
   questionKinds,
   llmJobs,
@@ -16,6 +17,7 @@ import {
   soloDecisions,
 } from './db/schema.js'
 import { buildApp } from './app.js'
+import { elo } from './drill.js'
 
 // 점수판 라우트는 SQL 집계(grouping sets, distinct on, lateral)가 본체다. 눈으로 본 숫자가
 // 맞아 보여도 경계(전체 줄과 날짜 줄이 섞이는 자리, 확신 1.0 이 들어갈 칸)는 따로 확인해야 한다.
@@ -143,5 +145,29 @@ describe('scoreboard', () => {
     assert.deepEqual([agree.json().ok, again.json().ok], [true, false]) // 두 번째 판정은 무시된다
     assert.deepEqual([r.extracted, r.answered, r.agree], [2, 1, 1])
     assert.deepEqual(r.today.map((d: { summary: string }) => d.summary), ['파일을 하나씩 돌렸다'])
+  })
+  // Elo 는 순수 함수라 DB 없이 본다. 이긴 쪽이 오르고 진 쪽이 같은 만큼 내린다(합이 그대로). 비슷함은 동점끼리면 그대로.
+  test('Elo: 이기면 오르고, 비슷함은 동점끼리 그대로, 점수 합은 보존된다', () => {
+    const one = elo([{ dimension: 'length', styleA: 'terse', styleB: 'detailed', choice: 'a' }])
+    const get = (rs: ReturnType<typeof elo>, s: string) => rs.find((r) => r.dimension === 'length' && r.style === s)!
+    assert.deepEqual([get(one, 'terse').rating, get(one, 'detailed').rating, get(one, 'balanced').rating], [1516, 1484, 1500])
+    const tie = elo([{ dimension: 'order', styleA: 'conclusion-first', styleB: 'context-first', choice: 'tie' }])
+    assert.ok(tie.filter((r) => r.dimension === 'order').every((r) => r.rating === 1500 && r.games === 1))
+  })
+
+  test('드릴: 고르기는 한 번만, 고른 쌍은 오늘의 목록에서 빠진다', async () => {
+    await db.insert(messages).values({ id: 'src1', sessionId: 's1', ts: hoursAgo(1), kind: 'assistant', text: '원문' })
+    const [p] = await db
+      .insert(drillPairs)
+      .values({ dimension: 'length', styleA: 'terse', styleB: 'detailed', sourceMessageId: 'src1', textA: 'A', textB: 'B', jobId })
+      .returning({ id: drillPairs.id })
+
+    const first = (await app.inject({ method: 'POST', url: `/drill/${p!.id}/a` })).json()
+    const second = (await app.inject({ method: 'POST', url: `/drill/${p!.id}/b` })).json()
+    const r = (await app.inject({ method: 'GET', url: '/drill' })).json()
+
+    assert.deepEqual([first.ok, second.ok], [true, false])
+    assert.deepEqual([r.decided, r.pending, r.today.length], [1, 0, 0])
+    assert.equal(r.ratings.find((x: { style: string }) => x.style === 'terse').rating, 1516)
   })
 })

@@ -203,6 +203,10 @@ td:first-child {
 tr.is-error td {
   color: var(--error);
 }
+/* 칸마다 길이가 다른 글을 나란히 비교하는 행. 기본(가운데 정렬)이면 두 글의 첫 줄 높이가 달라 읽기 어렵다. */
+tr.align-top td {
+  vertical-align: top;
+}
 /* 판단에 쓰기엔 표본이 적은 행. 지우지 않고 흐리게 둔다. 첫 열(--ink)까지 같이 흐려야 해서 td 를 직접 고른다. */
 tr.is-faint td {
   color: var(--faint);
@@ -269,6 +273,13 @@ tr.is-faint td {
 }
 .inline-form + .inline-form {
   margin-left: 8px;
+}
+/* 버튼을 세로로 쌓는 칸. 두 글을 나란히 놓는 표(/drill)에서 버튼 열을 좁게 두려고. */
+.stack .inline-form {
+  display: block;
+}
+.stack .inline-form + .inline-form {
+  margin: 6px 0 0;
 }
 /* 긴 원문(마크다운 초안 등)을 그대로 보여주는 블록. 표 셀 안에서 details 로 펼친다. */
 pre.block {

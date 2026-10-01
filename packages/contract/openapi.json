@@ -3036,6 +3036,153 @@
         }
       }
     },
+    "/drill": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "decided",
+                    "pending",
+                    "today",
+                    "ratings"
+                  ],
+                  "properties": {
+                    "decided": {
+                      "type": "integer"
+                    },
+                    "pending": {
+                      "type": "integer"
+                    },
+                    "today": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "dimension",
+                          "textA",
+                          "textB",
+                          "original"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "textA": {
+                            "type": "string"
+                          },
+                          "textB": {
+                            "type": "string"
+                          },
+                          "original": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "ratings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "dimension",
+                          "style",
+                          "rating",
+                          "games"
+                        ],
+                        "properties": {
+                          "dimension": {
+                            "type": "string"
+                          },
+                          "style": {
+                            "type": "string"
+                          },
+                          "rating": {
+                            "type": "integer"
+                          },
+                          "games": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/drill/{id}/{choice}": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "a"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "b"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "tie"
+                  ]
+                }
+              ]
+            },
+            "in": "path",
+            "name": "choice",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ingest/status": {
       "get": {
         "responses": {

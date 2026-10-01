@@ -388,6 +388,32 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// 쌍 비교 드릴. 같은 내용을 한 관점(dimension)에서만 다르게 쓴 두 글을 보여주고 수아가 고른다.
+//
+// 왜 쌍인가: "어떤 글이 좋아?"는 답하기 어렵지만 "둘 중 뭐가 나아?"는 쉽다. 고른 결과를 관점별로
+// Elo 점수로 쌓으면 "수아는 짧은 쪽 / 결론 먼저 / 쉬운 말"처럼 관점마다 선호가 숫자로 나온다.
+// 점수는 저장하지 않고 고른 기록에서 매번 다시 계산한다(scoreboard). 기록만 원본이다.
+//
+// 재료는 수아의 에이전트가 실제로 쓴 보고 글이다. 내용은 그대로 두고 문체만 바꾸게 해서,
+// 내용이 아니라 쓰는 방식을 고르게 한다.
+export const drillPairs = pgTable('drill_pairs', {
+  id: serial('id').primaryKey(),
+  dimension: text('dimension').notNull(),
+  styleA: text('style_a').notNull(),
+  styleB: text('style_b').notNull(),
+  sourceMessageId: text('source_message_id')
+    .notNull()
+    .references(() => messages.id),
+  textA: text('text_a').notNull(),
+  textB: text('text_b').notNull(),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+  // 수아의 선택. null = 아직. tie = 비슷함.
+  choice: text('choice', { enum: ['a', 'b', 'tie'] }),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+})
+
 // 취향 규칙 후보를 주제로 묶은 것. taste_findings 의 수아 쪽 취향을 합치고, 브레인에 이미 있는 규칙과
 // 겹치는지 표시한다. 수아가 /drafts 에서 고르면 inbox.md 에 한 줄을 덧붙인다(eval 초안과 같은 쓰기 경로).
 export const tasteThemes = pgTable('taste_themes', {
