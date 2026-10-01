@@ -6,8 +6,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql } from 'drizzle-orm'
 import { db, pool } from './db/index.js'
-import { agentEdits, editSurvival, sessions } from './db/schema.js'
+import { agentEdits, commitSurvival, editSurvival, sessions, tasteOwnership } from './db/schema.js'
 import { addedLines, measureSurvival } from './taste.js'
+import { measureCommits } from './taste-blame.js'
 
 // 남은 비율 측정. 진짜 레포 대신 임시 git 레포를 만든다. 기준 브랜치(main)의 파일에는 에이전트가 쓴 줄
 // 가운데 일부만 남겨 두고, 몇 줄이 남았다고 세는지 본다.
@@ -59,5 +60,32 @@ describe('taste', () => {
     const rows = Object.fromEntries((await db.select().from(editSurvival)).map((s) => [s.editId, s]))
     assert.deepEqual([rows.e1!.added, rows.e1!.kept, rows.e1!.fileFound, rows.e1!.ref], [3, 2, true, 'main'])
     assert.deepEqual([rows.e2!.fileFound, rows.e2!.kept], [false, 0])
+  })
+  // 커밋 기준. 수아 명의 + Claude 표시 커밋이 세 줄을 쓰고, 수아가 손으로 한 줄을 바꾸고, 남이 한 줄을 더한다.
+  test('커밋 기준: 내용으로 남은 줄을 세고, 줄 주인은 에이전트/수아 손/남으로 나눈다', async () => {
+    const r2 = await mkdtemp(join(tmpdir(), 'agent-console-taste2-'))
+    const g = (...a: string[]) => execFileSync('git', a, { cwd: r2 })
+    // 파일을 쓰고 그 사람 명의로 커밋한다
+    const step = async (content: string, email: string, msg: string) => {
+      await writeFile(join(r2, 'f.ts'), content)
+      g('add', '-A')
+      g('-c', `user.email=${email}`, '-c', 'user.name=n', 'commit', '-qm', msg)
+    }
+    g('init', '-q', '-b', 'main')
+    g('config', 'user.email', 'me@x') // 이 레포의 "수아" 명의
+    await step('const one = 1\nconst two = 2\nconst three = 3\n', 'me@x', 'feat: agent\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>')
+    await step('const one = 1\nconst two = 2\nconst three = 33\n', 'me@x', 'fix: by hand')
+    await step('const one = 1\nconst two = 2\nconst three = 33\nconst four = 4\n', 'other@x', 'feat: someone else')
+    await db.execute(sql`truncate ${sessions} cascade`)
+    await db.insert(sessions).values({ id: 's2', cwd: r2, repo: 'r2', startedAt: new Date(), lastSeenAt: new Date() })
+
+    const r = await measureCommits()
+
+    assert.equal(r.commits, 1) // 에이전트 커밋은 하나. 손 커밋과 남의 커밋은 대상이 아니다
+    const [c] = await db.select().from(commitSurvival)
+    assert.deepEqual([c!.added, c!.kept], [3, 2]) // "three = 3" 은 수아가 손으로 바꿨다
+    const [o] = await db.select().from(tasteOwnership)
+    assert.deepEqual([o!.agentLines, o!.mineLines, o!.otherLines], [2, 1, 1])
+    await rm(r2, { recursive: true, force: true })
   })
 })

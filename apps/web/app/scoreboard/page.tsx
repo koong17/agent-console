@@ -336,6 +336,82 @@ export default async function ScoreboardPage() {
       )}
       <section>
         <h2>taste · kept lines</h2>
+        {ta.commits.length > 0 && (
+          <>
+            <p className="summary">
+              수아 님 명의로 Claude 와 함께 쓴 커밋(Co-Authored-By)이 더한 줄 가운데, 기준 브랜치의 그 파일에 아직 있는
+              줄의 비율이에요. Bash 로 고친 것도 커밋에 들어가면 잡혀요. 줄 주인은 그 커밋들이 건드린 파일의 지금 줄을
+              git blame 으로 나눈 거예요 — 되돌렸다가 다시 넣은(Reapply) 줄은 다시 넣은 사람 것으로 세져요.
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>repo</th>
+                    <th>base</th>
+                    <th className="num">agent commits</th>
+                    <th className="num">added lines</th>
+                    <th className="num">kept %</th>
+                    <th className="num">now: agent</th>
+                    <th className="num">now: suah by hand</th>
+                    <th className="num">now: others</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ta.commits.map((c) => {
+                    const total = c.agentLines + c.mineLines + c.otherLines
+                    return (
+                      <tr key={c.repo}>
+                        <td>{c.repo}</td>
+                        <td className="mono">{c.ref}</td>
+                        <td className="num">{c.commits}</td>
+                        <td className="num">{c.added.toLocaleString()}</td>
+                        <td className="num">{pct(c.kept, c.added)}</td>
+                        <td className="num">{pct(c.agentLines, total)}</td>
+                        <td className="num">{pct(c.mineLines, total)}</td>
+                        <td className="num">{pct(c.otherLines, total)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {ta.rewritten.length > 0 && (
+              <>
+                <p className="summary">
+                  가장 많이 다시 쓰인 에이전트 커밋(더한 줄 20줄 이상). 무엇이 안 남았는지가 취향을 가리켜요. 파일을 옮긴 커밋은 그
+                  파일이 나중에 또 옮겨지면 다시 쓰인 것처럼 보여요 — 같은 줄을 레포 전체에서 찾지는 않아요.
+                </p>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>repo</th>
+                        <th>commit</th>
+                        <th>subject</th>
+                        <th className="num">added</th>
+                        <th className="num">kept %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ta.rewritten.map((r) => (
+                        <tr key={r.sha}>
+                          <td>{r.repo}</td>
+                          <td className="mono">
+                            {r.sha.slice(0, 8)} <span className="cell-zero">{fmtMinute(String(r.committedAt)).slice(0, 10)}</span>
+                          </td>
+                          <td className="wrap">{r.subject}</td>
+                          <td className="num">{r.added}</td>
+                          <td className="num">{pct(r.kept, r.added)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
         {ta.byRepo.length === 0 ? (
           <p className="state">
             아직 재지 않았어요. <span className="mono">pnpm ingest</span> 다음에 <span className="mono">pnpm taste</span> 를
@@ -344,7 +420,7 @@ export default async function ScoreboardPage() {
         ) : (
           <>
             <p className="summary">
-              에이전트가 Edit/Write 로 더한 줄 가운데 기준 브랜치의 그 파일에 아직 있는 비율이에요.
+              도구 입력 기준(참고): 에이전트가 Edit/Write 로 더한 줄 가운데 기준 브랜치의 그 파일에 아직 있는 비율이에요.
               {ta.checkedAt && <> 잰 시각 {fmtMinute(String(ta.checkedAt))}.</>}
               <br />
               남았다 = 받아들여졌다지만, 사라졌다에는 수아 님이 고침·에이전트가 나중에 고침·옮겨감이 섞여 있어요. 기준

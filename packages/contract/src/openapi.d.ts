@@ -1060,6 +1060,25 @@ export interface paths {
                                 kept: number;
                                 week: string;
                             }[];
+                            commits: {
+                                repo: string;
+                                ref: string;
+                                commits: number;
+                                added: number;
+                                kept: number;
+                                agentLines: number;
+                                mineLines: number;
+                                otherLines: number;
+                            }[];
+                            rewritten: {
+                                repo: string;
+                                sha: string;
+                                /** Format: date-time */
+                                committedAt: string;
+                                subject: string;
+                                added: number;
+                                kept: number;
+                            }[];
                         };
                     };
                 };

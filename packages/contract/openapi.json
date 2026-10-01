@@ -2120,7 +2120,9 @@
                   "required": [
                     "checkedAt",
                     "byRepo",
-                    "byWeek"
+                    "byWeek",
+                    "commits",
+                    "rewritten"
                   ],
                   "properties": {
                     "checkedAt": {
@@ -2195,6 +2197,83 @@
                           },
                           "week": {
                             "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "commits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "repo",
+                          "ref",
+                          "commits",
+                          "added",
+                          "kept",
+                          "agentLines",
+                          "mineLines",
+                          "otherLines"
+                        ],
+                        "properties": {
+                          "repo": {
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          },
+                          "commits": {
+                            "type": "integer"
+                          },
+                          "added": {
+                            "type": "integer"
+                          },
+                          "kept": {
+                            "type": "integer"
+                          },
+                          "agentLines": {
+                            "type": "integer"
+                          },
+                          "mineLines": {
+                            "type": "integer"
+                          },
+                          "otherLines": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "rewritten": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "repo",
+                          "sha",
+                          "committedAt",
+                          "subject",
+                          "added",
+                          "kept"
+                        ],
+                        "properties": {
+                          "repo": {
+                            "type": "string"
+                          },
+                          "sha": {
+                            "type": "string"
+                          },
+                          "committedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "subject": {
+                            "type": "string"
+                          },
+                          "added": {
+                            "type": "integer"
+                          },
+                          "kept": {
+                            "type": "integer"
                           }
                         }
                       }

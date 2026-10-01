@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { DateTime } from './schemas.js'
 import { db } from './db/index.js'
-import { agentEdits, correctionReplays, decisionKinds, decisionPolicies, decisions, editSurvival, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
+import { agentEdits, commitSurvival, correctionReplays, tasteOwnership, decisionKinds, decisionPolicies, decisions, editSurvival, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
 import { strip } from './jobs/shadow-predict.js'
 
 // 대체 로드맵의 점수판(/scoreboard). 브레인이 수아를 얼마나 대신하고 있나를 숫자로 본다.
@@ -136,7 +136,28 @@ const Taste = Type.Object({
   byRepo: Type.Array(Type.Object({ ...survival, repo: Type.String(), ref: Type.String(), refAt: DateTime, noFile: Type.Integer() })),
   // 주 단위(수정한 주). 오래된 수정일수록 고쳐질 시간이 길었다는 점을 같이 읽어야 한다.
   byWeek: Type.Array(Type.Object({ ...survival, week: Type.String() })),
+  // 커밋 기준(taste-blame.ts). Bash 로 고친 것도 커밋에 들어가면 잡힌다.
+  commits: Type.Array(
+    Type.Object({
+      repo: Type.String(),
+      ref: Type.String(),
+      commits: Type.Integer(),
+      added: Type.Integer(),
+      kept: Type.Integer(),
+      // 그 커밋들이 건드린 파일의 지금 줄 주인
+      agentLines: Type.Integer(),
+      mineLines: Type.Integer(),
+      otherLines: Type.Integer(),
+    }),
+  ),
+  // 가장 많이 다시 쓰인 에이전트 커밋. 무엇이 안 남았는지가 취향을 가리킨다.
+  rewritten: Type.Array(
+    Type.Object({ repo: Type.String(), sha: Type.String(), committedAt: DateTime, subject: Type.String(), added: Type.Integer(), kept: Type.Integer() }),
+  ),
 })
+// 다시 쓰인 커밋 목록에 넣을 최소 크기. 두세 줄짜리 커밋은 한 줄만 바뀌어도 비율이 크게 흔들린다.
+const REWRITTEN_MIN_ADDED = 20
+const REWRITTEN_LIMIT = 15
 
 const CALIBRATION_BUCKETS = 5
 // 틀린 예측 목록의 길이. 읽을 것이지 훑을 것이 아니라서 짧게.
@@ -537,10 +558,41 @@ export function scoreboardRoutes(app: App) {
       .where(sql`${editSurvival.fileFound}`)
       .groupBy(sql`1`)
       .orderBy(sql`1 desc`)
+    const commits = await db
+      .select({
+        repo: commitSurvival.repo,
+        ref: sql<string>`max(${commitSurvival.ref})`,
+        commits: sql<number>`count(*)::int`,
+        added: sql<number>`sum(${commitSurvival.added})::int`,
+        kept: sql<number>`sum(${commitSurvival.kept})::int`,
+        agentLines: sql<number>`max(${tasteOwnership.agentLines})`,
+        mineLines: sql<number>`max(${tasteOwnership.mineLines})`,
+        otherLines: sql<number>`max(${tasteOwnership.otherLines})`,
+      })
+      .from(commitSurvival)
+      .leftJoin(tasteOwnership, sql`${tasteOwnership.repo} = ${commitSurvival.repo}`)
+      .groupBy(commitSurvival.repo)
+      .orderBy(sql`count(*) desc`)
+    const rewritten = await db
+      .select({
+        repo: commitSurvival.repo,
+        sha: commitSurvival.sha,
+        committedAt: commitSurvival.committedAt,
+        subject: commitSurvival.subject,
+        added: commitSurvival.added,
+        kept: commitSurvival.kept,
+      })
+      .from(commitSurvival)
+      .where(sql`${commitSurvival.added} >= ${REWRITTEN_MIN_ADDED}`)
+      .orderBy(sql`${commitSurvival.kept}::float / ${commitSurvival.added}`, sql`${commitSurvival.added} desc`)
+      .limit(REWRITTEN_LIMIT)
+    const n = (v: unknown) => Number(v ?? 0)
     return {
       checkedAt: meta?.at ?? null,
       byRepo: byRepo.map((r) => ({ ...r, edits: Number(r.edits), added: Number(r.added), kept: Number(r.kept), noFile: Number(r.noFile) })),
       byWeek: byWeek.map((r) => ({ ...r, edits: Number(r.edits), added: Number(r.added), kept: Number(r.kept) })),
+      commits: commits.map((c) => ({ ...c, commits: n(c.commits), added: n(c.added), kept: n(c.kept), agentLines: n(c.agentLines), mineLines: n(c.mineLines), otherLines: n(c.otherLines) })),
+      rewritten,
     }
   })
 }

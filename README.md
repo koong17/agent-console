@@ -43,6 +43,7 @@ apps/server/            Fastify + Drizzle + Postgres
   src/evals.ts            eval 초안 대기열. 콘솔의 첫 쓰기 경로(브레인 레포에 draft 파일)
   src/audit.ts            혼자 한 결정 감사. 하루 10개 무작위로 묻고 판정을 DB 에 쓴다
   src/taste.ts            3단계 취향: 에이전트가 쓴 줄 중 기준 브랜치에 남은 비율(pnpm taste, LLM 없음)
+  src/taste-blame.ts      같은 것을 커밋 기준으로(수아 명의 + Co-Authored-By Claude). 줄 주인은 git blame
   src/scoreboard.ts       대체 로드맵 점수판: 수아 분, 블라인드 재예측·보정, 개입, 교정 되짚기, 단계별, evals
   src/openapi-emit.ts     OpenAPI 스펙을 packages/contract 로 쓰기
 apps/web/               Next 16, 서버 컴포넌트가 Fastify를 직접 호출 (CORS 없음)
@@ -80,6 +81,7 @@ scripts/, .githooks/    계약 신선도 검사 (아래)
 | `eval_drafts` | 교정 하나에서 만든 eval 케이스 초안 (pending/accepted/rejected) | `pnpm jobs eval-draft`, 저장은 /drafts |
 | `agent_edits` | 에이전트의 Edit/Write 호출 하나(경로, 바꾼 내용, 실패 여부) | transcript |
 | `edit_survival` | 수정 하나가 기준 브랜치에 얼마나 남았나(스냅숏) | `pnpm taste` |
+| `commit_survival`, `taste_ownership` | 에이전트 커밋 하나가 남긴 줄 / 그 파일들의 지금 줄 주인 | `pnpm taste` |
 | `draft_themes` | 규칙 없음 초안의 주제(새 규칙 후보 하나) | `pnpm jobs draft-theme` |
 | `solo_decisions` | 에이전트가 묻지 않고 정한 결정 하나와 수아의 판정 | `pnpm jobs solo-decision`, 판정은 /audit |
 | `answer_policies`, `decision_policies` | 질문 종류 안의 답을 판단(정책)으로 묶은 것 | `pnpm jobs answer-policy` |
@@ -119,7 +121,7 @@ pnpm test:db:push               # 스키마를 바꿀 때마다
 pnpm test
 ```
 
-`src/**/*.test.ts` 62개(2026-09-30). 층으로 나뉜다.
+`src/**/*.test.ts` 63개(2026-09-30). 층으로 나뉜다.
 
 - `lines.test.ts`, `transcripts.test.ts` — DB를 안 쓴다. `parseFile`이 파일을 읽어 메모리에 행을 모으는 데까지가 그 층이고, 카운터 로직도 전부 거기 있다.
 - `ingest-file.test.ts` — DB를 쓴다. 트랜잭션·충돌 처리·멱등성은 여기서만 검증된다.

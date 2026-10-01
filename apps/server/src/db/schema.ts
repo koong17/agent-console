@@ -203,6 +203,39 @@ export const editSurvival = pgTable('edit_survival', {
   checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
 })
 
+// 커밋 기준 남긴 비율. edit_survival 은 Edit/Write 도구 입력만 봐서 Bash 로 고친 파일을 놓친다.
+// 여기는 git 이력으로 본다: 수아 명의이고 Claude 공동 작성 표시(Co-Authored-By: Claude)가 있는 커밋이
+// 더한 줄 가운데, 기준 ref 의 git blame 이 아직 그 커밋 것으로 치는 줄의 비율.
+//
+// 수아 명의 = 그 레포의 git config user.email 로 쓴 커밋. 팀원도 Claude 를 쓰므로 표시만으로 가르면
+// 남의 에이전트 커밋이 섞인다(2026-09-30 appius: 표시 있는 커밋 1,667 중 수아 명의는 일부).
+export const commitSurvival = pgTable(
+  'commit_survival',
+  {
+    repo: text('repo').notNull(),
+    sha: text('sha').notNull(),
+    committedAt: timestamp('committed_at', { withTimezone: true }).notNull(),
+    subject: text('subject').notNull(),
+    added: integer('added').notNull(),
+    kept: integer('kept').notNull(),
+    ref: text('ref').notNull(),
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex('commit_survival_repo_sha').on(t.repo, t.sha)],
+)
+
+// 그 커밋들이 건드린 파일의 지금 줄 주인. 수아의 에이전트 / 수아가 손으로 / 다른 사람.
+// "에이전트가 쓴 것 중 남은 비율"과 짝을 이루는 "지금 코드 중 에이전트가 쓴 비율".
+export const tasteOwnership = pgTable('taste_ownership', {
+  repo: text('repo').primaryKey(),
+  ref: text('ref').notNull(),
+  files: integer('files').notNull(),
+  agentLines: integer('agent_lines').notNull(),
+  mineLines: integer('mine_lines').notNull(),
+  otherLines: integer('other_lines').notNull(),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
+})
+
 // 스킬 호출 하나당 한 줄.
 export const skillInvocations = pgTable(
   'skill_invocations',

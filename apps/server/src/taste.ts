@@ -19,7 +19,7 @@ import { db } from './db/index.js'
 import { agentEdits, editSurvival } from './db/schema.js'
 
 const run = promisify(execFile)
-const git = async (cwd: string, ...args: string[]) =>
+export const git = async (cwd: string, ...args: string[]) =>
   (await run('git', args, { cwd, maxBuffer: 64 * 1024 * 1024 })).stdout
 const MIN_LINE = 4
 
@@ -40,7 +40,7 @@ export function addedLines(oldText: string | null, newText: string) {
 // 경로를 realpath 로 풀어서 비교한다. git 은 뿌리를 풀린 경로로 주는데(/private/var/...), 기록된 파일 경로는
 // 심볼릭 링크를 거친 경로(/var/..., /tmp/...)일 수 있다. 안 풀면 상대 경로가 ../../ 로 새어 파일을 못 찾는다
 // (테스트가 잡았다 — macOS 의 임시 폴더가 그렇다).
-async function repoOf(file: string) {
+export async function repoOf(file: string) {
   let dir = dirname(file)
   for (;;) {
     try {
@@ -56,7 +56,7 @@ async function repoOf(file: string) {
   }
 }
 
-async function baseRef(root: string) {
+export async function baseRef(root: string) {
   for (const ref of ['origin/develop', 'origin/main', 'main', 'HEAD']) {
     try {
       const at = (await git(root, 'log', '-1', '--format=%cI', ref)).trim()
