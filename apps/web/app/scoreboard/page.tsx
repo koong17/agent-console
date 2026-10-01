@@ -11,6 +11,7 @@ type Evals = ApiData<'/scoreboard/evals'>
 type Phases = ApiData<'/scoreboard/phases'>
 type Drift = ApiData<'/scoreboard/drift'>
 type Taste = ApiData<'/scoreboard/taste'>
+type Graduation = ApiData<'/scoreboard/graduation'>
 type TasteFindings = ApiData<'/scoreboard/taste-findings'>
 const WHO: Record<string, string> = { 'suah-hand': '수아 손', 'suah-agent': '수아 에이전트', teammate: '팀원' }
 const mark = (p: boolean | null) => (p === null ? '-' : p ? 'pass' : 'fail')
@@ -35,8 +36,9 @@ export default async function ScoreboardPage() {
   let dr: Drift
   let ta: Taste
   let tf: TasteFindings
+  let gr: Graduation
   try {
-    ;[minutes, shadow, iv, cr, ev, ph, dr, ta, tf] = await Promise.all([
+    ;[minutes, shadow, iv, cr, ev, ph, dr, ta, tf, gr] = await Promise.all([
       unwrapAsync(api.GET('/scoreboard/minutes')),
       unwrapAsync(api.GET('/scoreboard/shadow')),
       unwrapAsync(api.GET('/scoreboard/interventions')),
@@ -46,6 +48,7 @@ export default async function ScoreboardPage() {
       unwrapAsync(api.GET('/scoreboard/drift')),
       unwrapAsync(api.GET('/scoreboard/taste')),
       unwrapAsync(api.GET('/scoreboard/taste-findings')),
+      unwrapAsync(api.GET('/scoreboard/graduation')),
     ])
   } catch (err) {
     return <ErrorState title="scoreboard" error={err} />
@@ -225,6 +228,53 @@ export default async function ScoreboardPage() {
           </>
         )}
       </section>
+
+      {gr.kinds.length > 0 && (
+        <section>
+          <h2>graduation candidates</h2>
+          <p className="summary">
+            질문 종류마다 브레인이 추천 없이 수아 님 답을 맞힌 비율이에요. 줄은 정답률이 아니라 하한(윌슨 95%)으로 세웠어요 —
+            2/2 는 100% 지만 하한은 34% 예요. 졸업 기준은 하한 {Math.round(gr.minLow * 100)}% 이상, 결정 {gr.minN}건 이상이고,
+            커밋·MR·티켓·문서 같은 공유 산출물 질문이 하나라도 섞인 종류는 빼요. 졸업한 종류는 에이전트가 묻지 않고 답한 뒤
+            보고해요. 지금 졸업 <strong>{gr.kinds.filter((k) => k.graduated).length}</strong>개. 결정 3개 미만인 종류는 흐리게 뒀어요.
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>kind</th>
+                  <th className="num">n</th>
+                  <th className="num">correct</th>
+                  <th className="num">accuracy</th>
+                  <th className="num">lower bound</th>
+                  <th className="num">recent 5</th>
+                  <th>last</th>
+                  <th>status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gr.kinds.map((k) => (
+                  <tr key={k.kind} className={k.n < 3 ? 'is-faint' : undefined}>
+                    <td>{k.kind}</td>
+                    <td className="num">{k.n}</td>
+                    <td className="num">{k.correct}</td>
+                    <td className="num">{pct(k.correct, k.n)}</td>
+                    <td className="num">{Math.round(k.wilsonLow * 100)}%</td>
+                    <td className="num">
+                      {k.recentCorrect}/{k.recentN}
+                    </td>
+                    <td className="mono">{fmtMinute(String(k.lastAt)).slice(0, 10)}</td>
+                    {/* 공유 산출물로 빠진 이유는 그 질문 문장을 마우스를 올리면 보여준다 */}
+                    <td title={k.sharedArtifact ?? undefined}>
+                      {k.graduated ? '졸업' : k.sharedArtifact ? '공유 산출물 제외' : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section>
         <h2>blind prediction</h2>

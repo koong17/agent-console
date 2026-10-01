@@ -18,6 +18,7 @@ import {
 } from './db/schema.js'
 import { buildApp } from './app.js'
 import { elo } from './drill.js'
+import { wilsonLow } from './scoreboard.js'
 
 // 점수판 라우트는 SQL 집계(grouping sets, distinct on, lateral)가 본체다. 눈으로 본 숫자가
 // 맞아 보여도 경계(전체 줄과 날짜 줄이 섞이는 자리, 확신 1.0 이 들어갈 칸)는 따로 확인해야 한다.
@@ -169,5 +170,12 @@ describe('scoreboard', () => {
     assert.deepEqual([first.ok, second.ok], [true, false])
     assert.deepEqual([r.decided, r.pending, r.today.length], [1, 0, 0])
     assert.equal(r.ratings.find((x: { style: string }) => x.style === 'terse').rating, 1516)
+  })
+  // 하한은 표본이 작을수록 낮다. 주석에 적은 값(2/2 → 34%, 10/11 → 62%)이 맞는지 본다.
+  test('졸업: 윌슨 하한은 표본이 작으면 낮게 나온다', () => {
+    assert.equal(Math.round(wilsonLow(2, 2) * 100), 34)
+    assert.equal(Math.round(wilsonLow(10, 11) * 100), 62)
+    assert.equal(wilsonLow(0, 0), 0)
+    assert.ok(wilsonLow(50, 50) > 0.9)
   })
 })

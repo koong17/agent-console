@@ -2368,6 +2368,89 @@
         }
       }
     },
+    "/scoreboard/graduation": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "kinds",
+                    "minLow",
+                    "minN"
+                  ],
+                  "properties": {
+                    "kinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "n",
+                          "correct",
+                          "wilsonLow",
+                          "recentCorrect",
+                          "recentN",
+                          "lastAt",
+                          "sharedArtifact",
+                          "graduated"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "n": {
+                            "type": "integer"
+                          },
+                          "correct": {
+                            "type": "integer"
+                          },
+                          "wilsonLow": {
+                            "type": "number"
+                          },
+                          "recentCorrect": {
+                            "type": "integer"
+                          },
+                          "recentN": {
+                            "type": "integer"
+                          },
+                          "lastAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "sharedArtifact": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "graduated": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "minLow": {
+                      "type": "number"
+                    },
+                    "minN": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/evals/drafts": {
       "get": {
         "responses": {

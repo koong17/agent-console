@@ -45,7 +45,7 @@ apps/server/            Fastify + Drizzle + Postgres
   src/drill.ts            쌍 비교 드릴. 하루 5쌍, 관점별 Elo 는 고른 기록에서 매번 계산
   src/taste.ts            3단계 취향: 에이전트가 쓴 줄 중 기준 브랜치에 남은 비율(pnpm taste, LLM 없음)
   src/taste-blame.ts      같은 것을 커밋 기준으로(수아 명의 + Co-Authored-By Claude). 줄 주인은 git blame
-  src/scoreboard.ts       대체 로드맵 점수판: 수아 분, 블라인드 재예측·보정, 개입, 교정 되짚기, 단계별, evals
+  src/scoreboard.ts       대체 로드맵 점수판(졸업 후보 = 질문 종류별 블라인드 정답률의 윌슨 하한 포함): 수아 분, 블라인드 재예측·보정, 개입, 교정 되짚기, 단계별, evals
   src/openapi-emit.ts     OpenAPI 스펙을 packages/contract 로 쓰기
 apps/web/               Next 16, 서버 컴포넌트가 Fastify를 직접 호출 (CORS 없음)
   app/page.tsx            /          요청 추적 + ingestion 상태
@@ -127,7 +127,7 @@ pnpm test:db:push               # 스키마를 바꿀 때마다
 pnpm test
 ```
 
-`src/**/*.test.ts` 67개(2026-10-01). 층으로 나뉜다.
+`src/**/*.test.ts` 68개(2026-10-01). 층으로 나뉜다.
 
 - `lines.test.ts`, `transcripts.test.ts` — DB를 안 쓴다. `parseFile`이 파일을 읽어 메모리에 행을 모으는 데까지가 그 층이고, 카운터 로직도 전부 거기 있다.
 - `ingest-file.test.ts` — DB를 쓴다. 트랜잭션·충돌 처리·멱등성은 여기서만 검증된다.

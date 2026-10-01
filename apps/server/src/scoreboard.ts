@@ -166,6 +166,45 @@ const TasteFindings = Type.Object({
 const REWRITTEN_MIN_ADDED = 20
 const REWRITTEN_LIMIT = 15
 
+// 졸업 후보(4단계). 질문 종류마다 블라인드 재예측 정답률과 그 하한(윌슨 95%)을 낸다.
+//
+// 정답률 대신 하한으로 줄 세우는 이유: 2/2 는 100% 지만 우연일 수 있다. 윌슨 하한은 "이만큼 맞혔으면 진짜
+// 정답률은 적어도 이 정도"를 표본 크기까지 넣어 계산한다 — 2/2 는 34%, 10/11 은 62%. 표본이 작으면 낮게 나온다.
+// 졸업 기준(하한 몇 %, 최소 몇 건)은 여기서 정하지 않는다. 로드맵이 "데이터가 생기면 수아와 정한다"고 했다.
+const Graduation = Type.Object({
+  kinds: Type.Array(
+    Type.Object({
+      kind: Type.String(),
+      n: Type.Integer(),
+      correct: Type.Integer(),
+      wilsonLow: Type.Number(),
+      // 가장 최근 다섯 건 중 맞힌 수. 예전엔 잘 맞히다 최근에 틀리기 시작한 종류를 가려낸다.
+      recentCorrect: Type.Integer(),
+      recentN: Type.Integer(),
+      lastAt: DateTime,
+      // 공유 산출물 질문이 섞여 있으면 그 문장 하나. 기준을 넘어도 졸업하지 않는다.
+      sharedArtifact: Type.Union([Type.String(), Type.Null()]),
+      graduated: Type.Boolean(),
+    }),
+  ),
+  minLow: Type.Number(),
+  minN: Type.Integer(),
+})
+
+// 졸업 기준. 2026-10-01 수아가 정했다: 하한 60% 이상, 결정 10건 이상.
+// 그리고 공유 산출물(커밋·push·MR·티켓·문서·배포·메시지) 질문이 하나라도 섞인 종류는 기준과 상관없이 빼기로 했다(PR-03).
+// 종류 단위로 빼는 이유: 졸업은 종류 단위로 "묻지 않음"을 켜는 것이라, 섞인 종류를 졸업시키면 그 안의 MR 질문도 안 묻게 된다.
+export const GRADUATION = { minLow: 0.6, minN: 10 }
+// 공유 산출물 질문을 알아보는 말. 질문 문장에서 찾는다. 놓치는 말이 있으면 여기 더한다 —
+// 놓치면 공유 산출물이 졸업하는 쪽으로 틀리므로(되돌리기 어려운 쪽), 넓게 잡는다.
+const SHARED_ARTIFACT = /\bMR\b|머지|merge|커밋|commit|push|푸시|티켓|ticket|jira|컨플루언스|confluence|배포|deploy|릴리스|release|슬랙|slack|메시지 보내|게시|코멘트|comment/i
+export function wilsonLow(k: number, n: number, z = 1.96) {
+  if (n === 0) return 0
+  const p = k / n
+  const d = 1 + (z * z) / n
+  return (p + (z * z) / (2 * n) - z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d
+}
+
 const CALIBRATION_BUCKETS = 5
 // 틀린 예측 목록의 길이. 읽을 것이지 훑을 것이 아니라서 짧게.
 const MISSES = 30
@@ -624,4 +663,44 @@ export function scoreboardRoutes(app: App) {
       .orderBy(tasteFindings.kind, tasteFindings.repo)
     return { counts: counts.map((c) => ({ ...c, n: Number(c.n) })), lessons }
   })
+
+  app.get('/scoreboard/graduation', { schema: { response: { 200: Graduation } } }, graduationReport)
+}
+
+// 졸업 판정. 점수판 라우트와 precedents 내보내기(jobs/export-kinds.ts)가 같은 판정을 쓴다 —
+// 두 곳에서 따로 계산하면 화면은 졸업 아닌데 에이전트는 안 묻는 식으로 갈라진다.
+export async function graduationReport() {
+    const rows = await db
+      .select({ kind: decisionKinds.kind, correct: shadowPredictions.correct, ts: decisions.ts })
+      .from(shadowPredictions)
+      .innerJoin(decisionKinds, sql`${decisionKinds.decisionId} = ${shadowPredictions.decisionId}`)
+      .innerJoin(decisions, sql`${decisions.id} = ${shadowPredictions.decisionId}`)
+      .orderBy(decisionKinds.kind, decisions.ts)
+    const by = new Map<string, Array<{ correct: boolean; ts: Date }>>()
+    for (const r of rows) by.set(r.kind, [...(by.get(r.kind) ?? []), { correct: r.correct, ts: r.ts }])
+    // 공유 산출물 판정은 재예측이 있는 결정만이 아니라 그 종류의 질문 전부를 본다.
+    const questions = await db
+      .select({ kind: decisionKinds.kind, question: decisions.question })
+      .from(decisionKinds)
+      .innerJoin(decisions, sql`${decisions.id} = ${decisionKinds.decisionId}`)
+    const shared = new Map<string, string>()
+    for (const q of questions) if (!shared.has(q.kind) && SHARED_ARTIFACT.test(q.question)) shared.set(q.kind, q.question.slice(0, 80))
+    const kinds = [...by].map(([kind, xs]) => {
+      const correct = xs.filter((x) => x.correct).length
+      const recent = xs.slice(-5)
+      const low = wilsonLow(correct, xs.length)
+      const sharedArtifact = shared.get(kind) ?? null
+      return {
+        kind,
+        n: xs.length,
+        correct,
+        wilsonLow: low,
+        recentCorrect: recent.filter((x) => x.correct).length,
+        recentN: recent.length,
+        lastAt: xs.at(-1)!.ts,
+        sharedArtifact,
+        graduated: !sharedArtifact && low >= GRADUATION.minLow && xs.length >= GRADUATION.minN,
+      }
+    })
+    return { kinds: kinds.sort((a, b) => b.wilsonLow - a.wilsonLow || b.n - a.n), ...GRADUATION }
 }

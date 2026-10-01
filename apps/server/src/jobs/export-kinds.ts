@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { decisionKinds, decisionPolicies, decisions, questionKinds } from '../db/schema.js'
+import { graduationReport } from '../scoreboard.js'
 
 export const KINDS_FILE = process.env.QUESTION_KINDS_FILE ?? join(homedir(), '.claude', 'question-kinds.json')
 
@@ -29,8 +30,11 @@ export async function exportKinds(path = KINDS_FILE) {
     .innerJoin(decisions, eq(decisions.id, decisionKinds.decisionId))
     // 답 정책(answer-policy)이 있으면 같이 싣는다. precedents 는 정책이 있으면 답 라벨 대신 정책으로 settled 를 판정한다.
     .leftJoin(decisionPolicies, eq(decisionPolicies.decisionId, decisions.id))
+  // 졸업한 종류. precedents 는 이 목록의 종류를 "묻지 말고 답한 뒤 보고"로 낸다.
+  const graduated = (await graduationReport()).kinds.filter((k) => k.graduated).map((k) => k.kind)
   const body = {
     generatedAt: new Date().toISOString(),
+    graduated,
     kinds: Object.fromEntries(kinds.map((k) => [k.name, k.description])),
     decisions: rows.map((r) => ({
       session_id: r.sessionId,

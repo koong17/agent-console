@@ -53,7 +53,8 @@ try {
     if (kind === questionKind.KIND)
       for (const r of await questionKind.kindSummary()) console.log(`${String(r.n).padStart(4)}  ${r.kind}`)
     // 둘 다 precedents 가 읽는 파일의 재료라 끝나면 다시 쓴다.
-    if (kind === questionKind.KIND || kind === answerPolicy.KIND)
+    // 재예측도 졸업 판정을 바꾸므로 끝나면 다시 쓴다.
+    if (kind === questionKind.KIND || kind === answerPolicy.KIND || kind === shadowPredict.KIND)
       console.log(`exported ${await exportKinds()} → ${KINDS_FILE}`)
   }
 } finally {
