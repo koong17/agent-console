@@ -81,6 +81,7 @@ scripts/, .githooks/    계약 신선도 검사 (아래)
 | `eval_drafts` | 교정 하나에서 만든 eval 케이스 초안 (pending/accepted/rejected) | `pnpm jobs eval-draft`, 저장은 /drafts |
 | `agent_edits` | 에이전트의 Edit/Write 호출 하나(경로, 바꾼 내용, 실패 여부) | transcript |
 | `edit_survival` | 수정 하나가 기준 브랜치에 얼마나 남았나(스냅숏) | `pnpm taste` |
+| `taste_themes` | 취향 규칙 후보를 묶은 주제와 브레인에 이미 있는지(none/partial/full). /drafts 에서 inbox 로 | `pnpm jobs taste-theme` |
 | `taste_findings` | 다시 쓰인 에이전트 커밋에서 누가 무엇을 바꿨나, 취향이면 규칙 후보 | `pnpm jobs taste-diff` |
 | `commit_survival`, `taste_ownership` | 에이전트 커밋 하나가 남긴 줄 / 그 파일들의 지금 줄 주인 | `pnpm taste` |
 | `draft_themes` | 규칙 없음 초안의 주제(새 규칙 후보 하나) | `pnpm jobs draft-theme` |
@@ -106,12 +107,13 @@ scripts/, .githooks/    계약 신선도 검사 (아래)
 | 루트 | `pnpm format` | prettier |
 | apps/server | `pnpm ingest` | ingestion 수동 실행 (서버가 켜져 있으면 알아서 돈다) |
 | apps/server | `pnpm db:push` / `db:seed` / `db:studio` | 스키마 적용 / 단가표 / 브라우저 DB 뷰어 |
-| apps/server | `pnpm jobs <종류> [--limit N] [--retry-failed]` | LLM 작업 넣고 비우기. 종류: question-kind, shadow-predict, message-intent, correction-replay, answer-policy, eval-draft, draft-theme, solo-decision, taste-diff. 돈이 들어서 자동으로 안 돈다 |
+| apps/server | `pnpm jobs <종류> [--limit N] [--retry-failed]` | LLM 작업 넣고 비우기. 종류: question-kind, shadow-predict, message-intent, correction-replay, answer-policy, eval-draft, draft-theme, solo-decision, taste-diff, taste-theme. 돈이 들어서 자동으로 안 돈다 |
 | apps/server | `pnpm taste` | 에이전트 수정이 기준 브랜치(origin/develop → origin/main → main → HEAD)에 남은 비율을 다시 잰다. fetch 안 함 |
 | apps/server | `pnpm test` | DATABASE_URL을 `agent_console_test`로 고정하고, 파일을 하나씩(--test-concurrency=1) 돈다 |
 | apps/server | `pnpm test:db:push` | 테스트 DB에 스키마 적용. 스키마를 바꾸면 여기도 한 번 |
 | HTTP | `POST /ingest/run`, `GET /ingest/status` | 수동 트리거(202), 실행 이력 |
 | HTTP | `POST /evals/drafts/:id/accept`, `/reject` | 초안을 브레인 레포에 draft 파일로 저장(이미 있으면 409) / 버림 |
+| HTTP | `POST /taste/themes/:id/accept`, `/reject` | 취향 규칙 한 줄을 suah-brain/inbox.md 끝에 덧붙임(커밋 안 함) / 버림 |
 
 ## 테스트
 
@@ -122,7 +124,7 @@ pnpm test:db:push               # 스키마를 바꿀 때마다
 pnpm test
 ```
 
-`src/**/*.test.ts` 64개(2026-10-01). 층으로 나뉜다.
+`src/**/*.test.ts` 65개(2026-10-01). 층으로 나뉜다.
 
 - `lines.test.ts`, `transcripts.test.ts` — DB를 안 쓴다. `parseFile`이 파일을 읽어 메모리에 행을 모으는 데까지가 그 층이고, 카운터 로직도 전부 거기 있다.
 - `ingest-file.test.ts` — DB를 쓴다. 트랜잭션·충돌 처리·멱등성은 여기서만 검증된다.

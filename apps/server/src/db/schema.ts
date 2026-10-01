@@ -388,6 +388,25 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// 취향 규칙 후보를 주제로 묶은 것. taste_findings 의 수아 쪽 취향을 합치고, 브레인에 이미 있는 규칙과
+// 겹치는지 표시한다. 수아가 /drafts 에서 고르면 inbox.md 에 한 줄을 덧붙인다(eval 초안과 같은 쓰기 경로).
+export const tasteThemes = pgTable('taste_themes', {
+  id: serial('id').primaryKey(),
+  // inbox 에 들어갈 한 줄(영어 — 브레인 레포 규칙). 화면에는 한국어 요약을 같이 보여준다.
+  lesson: text('lesson').notNull(),
+  summaryKo: text('summary_ko').notNull(),
+  // 이 주제로 묶인 발견 수. 클수록 여러 번 다시 쓰였다.
+  count: integer('count').notNull(),
+  // 브레인에 이미 있나: none(새 규칙 후보) / partial(있지만 이 경우를 안 다룸) / full(이미 있음 — 무시된 것)
+  covered: text('covered', { enum: ['none', 'partial', 'full'] }).notNull(),
+  coveredBy: text('covered_by'),
+  status: text('status', { enum: ['pending', 'accepted', 'rejected'] }).notNull().default('pending'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+})
+
 // 다시 쓰인 에이전트 커밋에서 뽑은 취향. 에이전트가 쓴 줄을 나중에 누가 무엇으로 바꿨나.
 //
 // 바꾼 사람을 같이 둔다. 수아가 손으로 바꿨거나 수아의 에이전트가 고쳤다면(교정 뒤) 수아의 취향이고,

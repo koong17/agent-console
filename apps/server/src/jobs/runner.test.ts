@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql, eq } from 'drizzle-orm'
 import { db, pool } from '../db/index.js'
-import { answerPolicies, correctionReplays, decisionPolicies, decisions, decisionKinds, draftThemes, evalDrafts, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
+import { answerPolicies, correctionReplays, decisionPolicies, decisions, decisionKinds, draftThemes, evalDrafts, tasteThemes, evalResults, evalRuns, llmJobs, messageIntents, messages, questionKinds, sessions, shadowPredictions } from '../db/schema.js'
 import { claim, drain, enqueue, recoverStale } from './runner.js'
 import { KIND, enqueueUnclassified, questionKindHandler } from './question-kind.js'
 
@@ -72,7 +72,7 @@ before(async () => {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate ${draftThemes}, ${evalDrafts}, ${decisionPolicies}, ${answerPolicies}, ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
+    sql`truncate ${tasteThemes}, ${draftThemes}, ${evalDrafts}, ${decisionPolicies}, ${answerPolicies}, ${evalResults}, ${evalRuns}, ${correctionReplays}, ${messageIntents}, ${shadowPredictions}, ${decisionKinds}, ${questionKinds}, ${llmJobs}, ${decisions} restart identity cascade`,
   )
   await rm(join(dir, 'calls'), { recursive: true, force: true })
   await mkdir(join(dir, 'calls'))
@@ -357,6 +357,31 @@ describe('shadow-predict', () => {
     } finally {
       await app.close()
     }
+  })
+
+  // 취향 규칙 → inbox.md 끝에 한 줄. 동시에 두 번 눌러도 한 줄, 기존 내용은 그대로.
+  test('취향 규칙: inbox 에 한 줄만 덧붙이고 기존 내용은 안 건드린다', async () => {
+    await writeFile(join(brain, 'inbox.md'), '# Inbox\n- old line') // 끝에 줄바꿈 없음
+    const [j] = await db.insert(llmJobs).values({ kind: 'taste-theme', subject: 's', status: 'done', input: {} }).returning({ id: llmJobs.id })
+    const [t] = await db
+      .insert(tasteThemes)
+      .values({ lesson: 'Use generated API clients.', summaryKo: '생성된 클라이언트', count: 4, covered: 'partial', coveredBy: 'BI-17', jobId: j!.id })
+      .returning({ id: tasteThemes.id })
+    const { buildApp } = await import('../app.js')
+    const app = await buildApp({ ingest: false })
+    try {
+      const [x, y] = await Promise.all([
+        app.inject({ method: 'POST', url: `/taste/themes/${t!.id}/accept` }),
+        app.inject({ method: 'POST', url: `/taste/themes/${t!.id}/accept` }),
+      ])
+      assert.deepEqual([x.statusCode, y.statusCode].sort(), [200, 409])
+    } finally {
+      await app.close()
+    }
+    const lines = (await readFile(join(brain, 'inbox.md'), 'utf8')).split('\n')
+    assert.equal(lines[1], '- old line') // 기존 줄은 그대로, 그 뒤에 줄바꿈을 넣고 붙였다
+    assert.match(lines[2]!, /^- \d{4}-\d{2}-\d{2} \(taste, from agent-console\): Use generated API clients\. Seen 4 time\(s\).*partly covered: BI-17\.$/)
+    assert.equal(lines.filter((l) => l.includes('taste, from agent-console')).length, 1)
   })
 
   test('선택지에 없는 답은 오답이 아니라 실패로 남는다', async () => {

@@ -2,11 +2,13 @@ import { Nav } from '../nav'
 import { api, unwrapAsync, type ApiData } from '../server'
 import { fmtMinute } from '../format'
 import { ErrorState } from '../error-state'
-import { Decide } from './decide'
+import { Decide, DecideTheme } from './decide'
 
 type Drafts = ApiData<'/evals/drafts'>
 type Draft = Drafts[number]
 type Themes = ApiData<'/evals/themes'>
+type TasteThemes = ApiData<'/taste/themes'>
+const COVERED: Record<string, string> = { none: '새 규칙', partial: '일부 있음', full: '이미 있음(무시됨)' }
 
 // eval 케이스 초안 대기열. 교정 되짚기에서 나온 초안을 골라 suah-brain/evals/cases 에 파일로 남긴다.
 //
@@ -16,8 +18,13 @@ type Themes = ApiData<'/evals/themes'>
 export default async function DraftsPage() {
   let drafts: Drafts
   let themes: Themes
+  let taste: TasteThemes
   try {
-    ;[drafts, themes] = await Promise.all([unwrapAsync(api.GET('/evals/drafts')), unwrapAsync(api.GET('/evals/themes'))])
+    ;[drafts, themes, taste] = await Promise.all([
+      unwrapAsync(api.GET('/evals/drafts')),
+      unwrapAsync(api.GET('/evals/themes')),
+      unwrapAsync(api.GET('/taste/themes')),
+    ])
   } catch (err) {
     return <ErrorState title="drafts" error={err} />
   }
@@ -49,6 +56,47 @@ export default async function DraftsPage() {
             active 만 돌리니 평가에는 아직 안 들어가요. 커밋과 active 전환은 브레인 세션에서 해요. 같은 이름의 파일이 있으면
             덮지 않아요.
           </p>
+
+          {taste.length > 0 && (
+            <section>
+              <h2>taste rules · to inbox</h2>
+              <p className="summary">
+                다시 쓰인 에이전트 커밋에서 뽑은 취향을 주제로 묶고, 지금 sense.md·principles.md 에 이미 있는지 맞대 봤어요.
+                "inbox 에 추가"를 누르면 suah-brain/inbox.md 끝에 영어 한 줄이 붙어요(커밋은 안 해요). "이미 있음"은 규칙이
+                있는데 무시된 경우라 새 규칙보다 읽히는 경로를 고칠 일이에요.
+              </p>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>rule</th>
+                      <th className="num">seen</th>
+                      <th>in brain</th>
+                      <th>status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {taste.map((t) => (
+                      <tr key={t.id} className={t.status === 'rejected' ? 'is-faint' : undefined}>
+                        <td className="wrap">
+                          {t.summaryKo}
+                          <div className="cell-zero">{t.lesson}</div>
+                        </td>
+                        <td className="num">{t.count}</td>
+                        <td className="wrap">
+                          {COVERED[t.covered] ?? t.covered}
+                          {t.coveredBy && <div className="cell-zero">{t.coveredBy}</div>}
+                        </td>
+                        <td>
+                          {t.status === 'pending' ? <DecideTheme id={t.id} /> : t.status === 'accepted' ? '추가함' : '버림'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           <section>
             <h2>no rule · by theme</h2>

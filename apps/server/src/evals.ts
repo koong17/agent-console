@@ -1,10 +1,10 @@
 import { Type } from 'typebox'
-import { writeFile } from 'node:fs/promises'
+import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { db } from './db/index.js'
-import { correctionReplays, draftThemes, evalDrafts, messages } from './db/schema.js'
+import { correctionReplays, draftThemes, evalDrafts, messages, tasteThemes } from './db/schema.js'
 import { DateTime, Nullable } from './schemas.js'
 import { BRAIN_DIR } from './brain.js'
 import { CASES_DIR } from './jobs/eval-draft.js'
@@ -43,6 +43,27 @@ const Theme = Type.Object({
 })
 
 const Decided = Type.Object({ status: Type.String(), path: Nullable(Type.String()) })
+
+const TasteTheme = Type.Object({
+  id: Type.Integer(),
+  lesson: Type.String(),
+  summaryKo: Type.String(),
+  count: Type.Integer(),
+  covered: Type.String(),
+  coveredBy: Nullable(Type.String()),
+  status: Type.Union([Type.Literal('pending'), Type.Literal('accepted'), Type.Literal('rejected')]),
+})
+const ThemeParams = Type.Object({ id: Type.Integer() })
+const INBOX = join(BRAIN_DIR, 'inbox.md')
+
+// inbox 에 덧붙일 한 줄. 브레인 레포 규칙대로 영어다. 덮여 있는 정도를 같이 적어, 승격할 때
+// "새 규칙"인지 "있는데 무시된 규칙"인지 다시 판단하지 않게 한다.
+function inboxLine(t: { lesson: string; count: number; covered: string; coveredBy: string | null }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const where =
+    t.covered === 'none' ? 'no existing rule covers it' : t.covered === 'partial' ? `partly covered: ${t.coveredBy}` : `already covered (${t.coveredBy}) — ignored, not missing`
+  return `- ${today} (taste, from agent-console): ${t.lesson} Seen ${t.count} time(s) in agent commits Suah's side later rewrote; ${where}.`
+}
 const Conflict = Type.Object({ error: Type.String(), status: Type.String() })
 const Params = Type.Object({ messageId: Type.String() })
 
@@ -123,6 +144,50 @@ export function evalRoutes(app: App) {
       return { status: 'accepted', path }
     },
   )
+
+  app.get('/taste/themes', { schema: { response: { 200: Type.Array(TasteTheme) } } }, async () =>
+    db
+      .select({
+        id: tasteThemes.id,
+        lesson: tasteThemes.lesson,
+        summaryKo: tasteThemes.summaryKo,
+        count: tasteThemes.count,
+        covered: tasteThemes.covered,
+        coveredBy: tasteThemes.coveredBy,
+        status: tasteThemes.status,
+      })
+      .from(tasteThemes)
+      .orderBy(sql`${tasteThemes.status} <> 'pending'`, sql`${tasteThemes.count} desc`, tasteThemes.id),
+  )
+
+  // inbox 에 한 줄 덧붙인다. 잠금은 eval 초안과 같다: DB 조건부 갱신이 먼저, 파일은 그다음.
+  // 파일은 덮어쓰지 않고 끝에 붙인다(append). 다른 세션이 inbox 를 고치는 중이어도 기존 내용은 안 건드린다.
+  app.post('/taste/themes/:id/accept', { schema: { params: ThemeParams, response: { 200: Decided, 409: Conflict } } }, async (req, reply) => {
+    const [won] = await db
+      .update(tasteThemes)
+      .set({ status: 'accepted', decidedAt: new Date() })
+      .where(and(eq(tasteThemes.id, req.params.id), eq(tasteThemes.status, 'pending')))
+      .returning()
+    if (!won) return reply.code(409).send({ error: '이미 결정했거나 없는 주제예요', status: 'decided' })
+    try {
+      const cur = await readFile(INBOX, 'utf8').catch(() => '')
+      await appendFile(INBOX, (cur && !cur.endsWith('\n') ? '\n' : '') + inboxLine(won) + '\n')
+    } catch (err) {
+      await db.update(tasteThemes).set({ status: 'pending', decidedAt: null }).where(eq(tasteThemes.id, req.params.id))
+      return reply.code(409).send({ error: `inbox 에 못 썼어요: ${(err as Error).message}`, status: 'pending' })
+    }
+    return { status: 'accepted', path: relative(BRAIN_DIR, INBOX) }
+  })
+
+  app.post('/taste/themes/:id/reject', { schema: { params: ThemeParams, response: { 200: Decided, 409: Conflict } } }, async (req, reply) => {
+    const [won] = await db
+      .update(tasteThemes)
+      .set({ status: 'rejected', decidedAt: new Date() })
+      .where(and(eq(tasteThemes.id, req.params.id), eq(tasteThemes.status, 'pending')))
+      .returning({ id: tasteThemes.id })
+    if (!won) return reply.code(409).send({ error: '이미 결정했거나 없는 주제예요', status: 'decided' })
+    return { status: 'rejected', path: null }
+  })
 
   app.post(
     '/evals/drafts/:messageId/reject',

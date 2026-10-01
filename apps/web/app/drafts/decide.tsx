@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState } from 'react'
-import { decide, type DecideState } from './actions'
+import { decide, decideTheme, type DecideState } from './actions'
 
 const initial: DecideState = { error: null, path: null }
 
@@ -18,6 +18,29 @@ export function Decide({ messageId }: { messageId: string }) {
       <form action={accept} className="inline-form">
         <button className="button is-primary" type="submit" disabled={busy}>
           {accepting ? '쓰는 중…' : '초안으로 저장'}
+        </button>
+      </form>
+      <form action={reject} className="inline-form">
+        <button className="button" type="submit" disabled={busy}>
+          {rejecting ? '버리는 중…' : '버리기'}
+        </button>
+      </form>
+      {error && <div className="state-error">{error}</div>}
+    </>
+  )
+}
+
+// 취향 규칙 후보용. 버튼 문구만 다르고 동작은 Decide 와 같다.
+export function DecideTheme({ id }: { id: number }) {
+  const [accepted, accept, accepting] = useActionState(decideTheme.bind(null, id, 'accept'), initial)
+  const [rejected, reject, rejecting] = useActionState(decideTheme.bind(null, id, 'reject'), initial)
+  const busy = accepting || rejecting
+  const error = accepted.error ?? rejected.error
+  return (
+    <>
+      <form action={accept} className="inline-form">
+        <button className="button is-primary" type="submit" disabled={busy}>
+          {accepting ? '쓰는 중…' : 'inbox 에 추가'}
         </button>
       </form>
       <form action={reject} className="inline-form">

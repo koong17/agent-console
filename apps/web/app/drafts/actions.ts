@@ -26,3 +26,19 @@ export async function decide(messageId: string, verb: 'accept' | 'reject', _prev
     return { error: e instanceof Error ? e.message : String(e), path: null }
   }
 }
+
+// 취향 규칙 후보 → inbox. 같은 방식(서버 액션 → Fastify POST → 목록 다시 그림).
+export async function decideTheme(id: number, verb: 'accept' | 'reject', _prev: DecideState): Promise<DecideState> {
+  try {
+    const opts = { params: { path: { id } } }
+    const res =
+      verb === 'accept'
+        ? await callApi(api.POST('/taste/themes/{id}/accept', opts))
+        : await callApi(api.POST('/taste/themes/{id}/reject', opts))
+    if (res.error) return { error: res.error.error, path: null }
+    revalidatePath('/drafts')
+    return { error: null, path: res.data.path }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e), path: null }
+  }
+}
