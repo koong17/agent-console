@@ -388,6 +388,27 @@ export const decisionKinds = pgTable('decision_kinds', {
 
 export type LlmJob = typeof llmJobs.$inferSelect
 
+// 다시 쓰인 에이전트 커밋에서 뽑은 취향. 에이전트가 쓴 줄을 나중에 누가 무엇으로 바꿨나.
+//
+// 바꾼 사람을 같이 둔다. 수아가 손으로 바꿨거나 수아의 에이전트가 고쳤다면(교정 뒤) 수아의 취향이고,
+// 팀원이 바꿨다면 팀 관례다. 둘을 섞으면 "수아는 이렇게 쓴다"에 남의 습관이 들어간다.
+export const tasteFindings = pgTable('taste_findings', {
+  id: serial('id').primaryKey(),
+  repo: text('repo').notNull(),
+  sha: text('sha').notNull(),
+  file: text('file').notNull(),
+  // 무엇이 바뀌었나. revert/move 는 취향이 아니라 이력 사건이다 — 걸러 보려고 따로 둔다.
+  kind: text('kind', { enum: ['naming', 'structure', 'comment', 'scope', 'behavior', 'style', 'revert', 'move'] }).notNull(),
+  byWhom: text('by_whom', { enum: ['suah-hand', 'suah-agent', 'teammate'] }).notNull(),
+  // 취향(선호)인가, 버그 수정·요구 변경처럼 취향과 무관한가
+  isTaste: boolean('is_taste').notNull(),
+  // 취향이면 한 문장 규칙 후보. 아니면 null.
+  lesson: text('lesson'),
+  jobId: integer('job_id')
+    .notNull()
+    .references(() => llmJobs.id),
+})
+
 // 에이전트가 묻지 않고 혼자 정한 결정. 로드맵 2단계의 "침묵을 동의로 읽지 않기" 장치.
 //
 // 왜 필요한가: 예측 점수와 교정은 수아가 "뭔가 말한" 곳만 본다. 에이전트가 혼자 정하고 수아가

@@ -13,6 +13,7 @@ import * as answerPolicy from './answer-policy.js'
 import * as evalDraft from './eval-draft.js'
 import * as draftTheme from './draft-theme.js'
 import * as soloDecision from './solo-decision.js'
+import * as tasteDiff from './taste-diff.js'
 import { exportKinds, KINDS_FILE } from './export-kinds.js'
 
 // 종류마다 handler 와 "넣을 대상 고르기" 하나씩.
@@ -25,6 +26,7 @@ const KINDS: Record<string, { handler: Handler<never, never>; enqueue: (limit?: 
   [evalDraft.KIND]: { handler: evalDraft.evalDraftHandler as Handler<never, never>, enqueue: evalDraft.enqueueReplays },
   [draftTheme.KIND]: { handler: draftTheme.draftThemeHandler as Handler<never, never>, enqueue: draftTheme.enqueueThemes },
   [soloDecision.KIND]: { handler: soloDecision.soloDecisionHandler as Handler<never, never>, enqueue: soloDecision.enqueueSample },
+  [tasteDiff.KIND]: { handler: tasteDiff.tasteDiffHandler as Handler<never, never>, enqueue: tasteDiff.enqueueRewritten },
 }
 
 const [kind, ...rest] = process.argv.slice(2)

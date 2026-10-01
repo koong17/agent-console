@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm'
 import type { App } from './app.js'
 import { DateTime } from './schemas.js'
 import { db } from './db/index.js'
-import { agentEdits, commitSurvival, correctionReplays, tasteOwnership, decisionKinds, decisionPolicies, decisions, editSurvival, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
+import { agentEdits, commitSurvival, correctionReplays, tasteFindings, tasteOwnership, decisionKinds, decisionPolicies, decisions, editSurvival, messageIntents, messages, shadowPredictions, skillInvocations, toolResults } from './db/schema.js'
 import { strip } from './jobs/shadow-predict.js'
 
 // 대체 로드맵의 점수판(/scoreboard). 브레인이 수아를 얼마나 대신하고 있나를 숫자로 본다.
@@ -153,6 +153,13 @@ const Taste = Type.Object({
   // 가장 많이 다시 쓰인 에이전트 커밋. 무엇이 안 남았는지가 취향을 가리킨다.
   rewritten: Type.Array(
     Type.Object({ repo: Type.String(), sha: Type.String(), committedAt: DateTime, subject: Type.String(), added: Type.Integer(), kept: Type.Integer() }),
+  ),
+})
+// 다시 쓰인 커밋에서 뽑은 취향(jobs/taste-diff.ts). 바꾼 사람별·종류별 개수와, 수아 쪽 취향 규칙 후보.
+const TasteFindings = Type.Object({
+  counts: Type.Array(Type.Object({ byWhom: Type.String(), kind: Type.String(), isTaste: Type.Boolean(), n: Type.Integer() })),
+  lessons: Type.Array(
+    Type.Object({ repo: Type.String(), sha: Type.String(), file: Type.String(), kind: Type.String(), byWhom: Type.String(), lesson: Type.String() }),
   ),
 })
 // 다시 쓰인 커밋 목록에 넣을 최소 크기. 두세 줄짜리 커밋은 한 줄만 바뀌어도 비율이 크게 흔들린다.
@@ -594,5 +601,27 @@ export function scoreboardRoutes(app: App) {
       commits: commits.map((c) => ({ ...c, commits: n(c.commits), added: n(c.added), kept: n(c.kept), agentLines: n(c.agentLines), mineLines: n(c.mineLines), otherLines: n(c.otherLines) })),
       rewritten,
     }
+  })
+
+  app.get('/scoreboard/taste-findings', { schema: { response: { 200: TasteFindings } } }, async () => {
+    const counts = await db
+      .select({ byWhom: tasteFindings.byWhom, kind: tasteFindings.kind, isTaste: tasteFindings.isTaste, n: sql<number>`count(*)::int` })
+      .from(tasteFindings)
+      .groupBy(tasteFindings.byWhom, tasteFindings.kind, tasteFindings.isTaste)
+      .orderBy(sql`count(*) desc`)
+    // 수아 쪽(손이든 그의 에이전트든)이 바꾼 취향만 규칙 후보로 낸다. 팀원이 바꾼 건 팀 관례라 따로 센다.
+    const lessons = await db
+      .select({
+        repo: tasteFindings.repo,
+        sha: tasteFindings.sha,
+        file: tasteFindings.file,
+        kind: tasteFindings.kind,
+        byWhom: tasteFindings.byWhom,
+        lesson: sql<string>`${tasteFindings.lesson}`,
+      })
+      .from(tasteFindings)
+      .where(sql`${tasteFindings.isTaste} and ${tasteFindings.lesson} is not null and ${tasteFindings.byWhom} <> 'teammate'`)
+      .orderBy(tasteFindings.kind, tasteFindings.repo)
+    return { counts: counts.map((c) => ({ ...c, n: Number(c.n) })), lessons }
   })
 }

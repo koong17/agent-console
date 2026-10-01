@@ -11,6 +11,8 @@ type Evals = ApiData<'/scoreboard/evals'>
 type Phases = ApiData<'/scoreboard/phases'>
 type Drift = ApiData<'/scoreboard/drift'>
 type Taste = ApiData<'/scoreboard/taste'>
+type TasteFindings = ApiData<'/scoreboard/taste-findings'>
+const WHO: Record<string, string> = { 'suah-hand': '수아 손', 'suah-agent': '수아 에이전트', teammate: '팀원' }
 const mark = (p: boolean | null) => (p === null ? '-' : p ? 'pass' : 'fail')
 type Counts = Interventions['total']['counts']
 
@@ -32,8 +34,9 @@ export default async function ScoreboardPage() {
   let ph: Phases
   let dr: Drift
   let ta: Taste
+  let tf: TasteFindings
   try {
-    ;[minutes, shadow, iv, cr, ev, ph, dr, ta] = await Promise.all([
+    ;[minutes, shadow, iv, cr, ev, ph, dr, ta, tf] = await Promise.all([
       unwrapAsync(api.GET('/scoreboard/minutes')),
       unwrapAsync(api.GET('/scoreboard/shadow')),
       unwrapAsync(api.GET('/scoreboard/interventions')),
@@ -42,6 +45,7 @@ export default async function ScoreboardPage() {
       unwrapAsync(api.GET('/scoreboard/phases')),
       unwrapAsync(api.GET('/scoreboard/drift')),
       unwrapAsync(api.GET('/scoreboard/taste')),
+      unwrapAsync(api.GET('/scoreboard/taste-findings')),
     ])
   } catch (err) {
     return <ErrorState title="scoreboard" error={err} />
@@ -460,6 +464,56 @@ export default async function ScoreboardPage() {
           </>
         )}
       </section>
+
+      {tf.counts.length > 0 && (
+        <section>
+          <h2>taste · what got rewritten</h2>
+          <p className="summary">
+            다시 쓰인 에이전트 커밋에서, 에이전트 줄을 지운 뒤 커밋을 읽고 무엇이 바뀌었는지 나눴어요. 바꾼 사람은 git 명의로
+            정해요. 수아 님 쪽(손 또는 교정받은 에이전트)이 바꾼 취향만 규칙 후보로 아래에 모았어요. 팀원이 바꾼 건 팀
+            관례라 개수만 세요.
+            <br />
+            {(['suah-hand', 'suah-agent', 'teammate'] as const)
+              .map((w) => {
+                const all = tf.counts.filter((c) => c.byWhom === w)
+                return { w, n: all.reduce((a, c) => a + c.n, 0), taste: all.filter((c) => c.isTaste).reduce((a, c) => a + c.n, 0) }
+              })
+              .filter((x) => x.n > 0)
+              .map((x, i) => (
+                <span key={x.w}>
+                  {i > 0 && ' · '}
+                  {WHO[x.w]} <strong>{x.n}</strong>건(취향 {x.taste})
+                </span>
+              ))}
+          </p>
+          {tf.lessons.length > 0 && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>kind</th>
+                    <th>by</th>
+                    <th>lesson</th>
+                    <th>where</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tf.lessons.map((l, i) => (
+                    <tr key={`${l.sha}-${l.file}-${i}`}>
+                      <td className="mono">{l.kind}</td>
+                      <td>{WHO[l.byWhom] ?? l.byWhom}</td>
+                      <td className="wrap">{l.lesson}</td>
+                      <td className="wrap mono cell-zero">
+                        {l.repo} {l.sha.slice(0, 8)} {l.file.split('/').pop()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {dr.kinds.length > 0 && (
         <section>

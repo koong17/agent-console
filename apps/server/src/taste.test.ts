@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql } from 'drizzle-orm'
 import { db, pool } from './db/index.js'
-import { agentEdits, commitSurvival, editSurvival, sessions, tasteOwnership } from './db/schema.js'
+import { agentEdits, commitSurvival, editSurvival, llmJobs, sessions, tasteOwnership } from './db/schema.js'
 import { addedLines, measureSurvival } from './taste.js'
 import { measureCommits } from './taste-blame.js'
 
@@ -87,5 +87,36 @@ describe('taste', () => {
     const [o] = await db.select().from(tasteOwnership)
     assert.deepEqual([o!.agentLines, o!.mineLines, o!.otherLines], [2, 1, 1])
     await rm(r2, { recursive: true, force: true })
+  })
+  // 다시 쓰인 커밋 재료 모으기. 에이전트 줄을 실제로 지운 커밋만, 바꾼 사람 표시와 함께 넣는다.
+  test('taste-diff: 에이전트 줄을 지운 뒤 커밋만 모으고 바꾼 사람을 git 명의로 정한다', async () => {
+    const r3 = await mkdtemp(join(tmpdir(), 'agent-console-taste3-'))
+    const g = (...a: string[]) => execFileSync('git', a, { cwd: r3 }).toString()
+    const step = async (file: string, content: string, email: string, msg: string) => {
+      await writeFile(join(r3, file), content)
+      g('add', '-A')
+      g('-c', `user.email=${email}`, '-c', 'user.name=n', 'commit', '-qm', msg)
+    }
+    g('init', '-q', '-b', 'main')
+    g('config', 'user.email', 'me@x')
+    const agentBody = Array.from({ length: 25 }, (_, i) => `const agentLine${i} = ${i}`).join('\n') + '\n'
+    await step('f.ts', agentBody, 'me@x', 'feat: agent\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>')
+    await step('other.ts', 'const unrelated = 1\n', 'other@x', 'chore: 다른 파일') // f.ts 를 안 건드린 커밋
+    await step('f.ts', 'const renamedByHand = 1\n', 'me@x', 'refactor: 손으로 다시 씀') // 에이전트 줄을 지운 커밋
+    const sha = g('rev-list', '--max-parents=0', 'HEAD').trim()
+    await db.execute(sql`truncate ${sessions} cascade`)
+    await db.insert(sessions).values({ id: 's3', cwd: r3, repo: 'r3', startedAt: new Date(), lastSeenAt: new Date() })
+    const repo = r3.split('/').pop()!
+    await db.insert(commitSurvival).values({ repo, sha, committedAt: new Date(), subject: 'feat: agent', added: 25, kept: 0, ref: 'main', checkedAt: new Date() })
+
+    // 다른 테스트 파일이 남긴 작업에 기대지 않는다. 같은 대상의 작업이 있으면 enqueue 가 건너뛴다.
+    await db.delete(llmJobs).where(sql`${llmJobs.kind} = 'taste-diff'`)
+    const td = await import('./jobs/taste-diff.js')
+    assert.equal(await td.enqueueRewritten(), 1)
+    const [job] = await db.select().from(llmJobs).where(sql`${llmJobs.kind} = 'taste-diff'`)
+    const input = job!.input as { files: Array<{ path: string; later: Array<{ who: string; subject: string }> }> }
+    assert.deepEqual(input.files.map((f) => f.path), ['f.ts'])
+    assert.deepEqual(input.files[0]!.later.map((c) => [c.who, c.subject]), [['suah-hand', 'refactor: 손으로 다시 씀']])
+    await rm(r3, { recursive: true, force: true })
   })
 })

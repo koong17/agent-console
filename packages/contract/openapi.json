@@ -2286,6 +2286,88 @@
         }
       }
     },
+    "/scoreboard/taste-findings": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "counts",
+                    "lessons"
+                  ],
+                  "properties": {
+                    "counts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "byWhom",
+                          "kind",
+                          "isTaste",
+                          "n"
+                        ],
+                        "properties": {
+                          "byWhom": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "isTaste": {
+                            "type": "boolean"
+                          },
+                          "n": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "lessons": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "repo",
+                          "sha",
+                          "file",
+                          "kind",
+                          "byWhom",
+                          "lesson"
+                        ],
+                        "properties": {
+                          "repo": {
+                            "type": "string"
+                          },
+                          "sha": {
+                            "type": "string"
+                          },
+                          "file": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "byWhom": {
+                            "type": "string"
+                          },
+                          "lesson": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/evals/drafts": {
       "get": {
         "responses": {

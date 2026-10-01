@@ -22,7 +22,7 @@ import { commitSurvival, sessions, tasteOwnership } from './db/schema.js'
 import { baseRef, git } from './taste.js'
 
 const MIN_LINE = 4
-const norm = (t: string) =>
+export const norm = (t: string) =>
   t
     .split('\n')
     .map((l) => l.trim())
@@ -34,12 +34,12 @@ const SINCE = '2026-07-01'
 // 잠금 파일은 사람도 에이전트도 "쓴" 게 아니다. 세면 비율이 잠금 파일 크기에 끌려간다.
 const SKIP = /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|Podfile\.lock|Cargo\.lock)$/
 const BLAME_CONCURRENCY = 6
-const TRAILER = 'Co-Authored-By: Claude'
+export const TRAILER = 'Co-Authored-By: Claude'
 
 // 세션을 연 폴더들의 레포. 같은 레포의 worktree 는 하나로 묶는다 — 이력이 같아서 따로 세면 두 번 센다
 // (2026-09-30 첫 실행에서 appius 와 그 worktree 가 같은 숫자로 두 줄 나왔다). 묶는 키는 git 공통 디렉터리,
 // 이름은 그 레포 본체(공통 디렉터리의 부모)의 폴더 이름이다.
-async function roots() {
+export async function roots() {
   const cwds = (await db.selectDistinct({ cwd: sessions.cwd }).from(sessions)).map((r) => r.cwd)
   const out = new Map<string, string>() // 공통 디렉터리 → 대표 작업 폴더
   for (const cwd of cwds) {
