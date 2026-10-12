@@ -10,8 +10,12 @@ import { DateTime } from './schemas.js'
 //
 // 하루 표본은 md5(id || 날짜) 순서다. 같은 날에는 새로고침해도 같은 결정이 나오고(하나 답하면 다음 것이
 // 올라온다), 날이 바뀌면 다른 결정이 앞에 온다. random() 을 쓰면 새로고침마다 바뀌어서 답하려던 행이 사라진다.
-
-const DAILY = 10
+//
+// 빼거나 미루거나 건너뛴 결정을 먼저 보여준다. 2026-10-12 기준 판정 68건 중 반대 9건 가운데 7건이 이 꼴이었고
+// (이 꼴 24건 중 7건, 나머지 44건 중 2건), 동의가 87%라 하루 10건은 수아 시간 대비 얻는 게 적었다.
+// 이 낱말 목록은 그 9건을 보고 만든 것이라 표본 안 적합이다 — 새 반대가 이 꼴 밖에서 나오면 목록을 다시 본다.
+const DAILY = 3
+const DEFERRAL = '제외|생략|미루|미뤘|선행|미정의|보관|남겨|않고|않았|대신|보류|빼고|뺐|건너|막았|후속|따로|분리'
 
 const Item = Type.Object({
   id: Type.Integer(),
@@ -52,7 +56,7 @@ export function auditRoutes(app: App) {
       .from(soloDecisions)
       .innerJoin(messages, eq(messages.id, soloDecisions.messageId))
       .where(isNull(soloDecisions.verdict))
-      .orderBy(sql`md5(${soloDecisions.id}::text || current_date::text)`)
+      .orderBy(sql`(${soloDecisions.summary} ~ ${DEFERRAL}) desc`, sql`md5(${soloDecisions.id}::text || current_date::text)`)
       .limit(DAILY)
     return {
       extracted: Number(agg?.extracted ?? 0),
