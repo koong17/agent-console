@@ -80,6 +80,7 @@ const IngestStatsSchema = Type.Object({
     memoryDeny: Type.Optional(Type.Integer()),
     slackVoiceGate: Type.Optional(Type.Integer()),
     vrReminder: Type.Optional(Type.Integer()),
+    askGate: Type.Optional(Type.Integer()),
   }),
 })
 

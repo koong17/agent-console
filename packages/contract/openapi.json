@@ -3526,6 +3526,9 @@
                                         },
                                         "vrReminder": {
                                           "type": "integer"
+                                        },
+                                        "askGate": {
+                                          "type": "integer"
                                         }
                                       }
                                     }
@@ -3813,6 +3816,9 @@
                                         "type": "integer"
                                       },
                                       "vrReminder": {
+                                        "type": "integer"
+                                      },
+                                      "askGate": {
                                         "type": "integer"
                                       }
                                     }

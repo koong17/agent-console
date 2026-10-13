@@ -22,7 +22,7 @@ const EVENTS_PATH = join(homedir(), '.claude', 'harness-events.jsonl')
 // type으로 갈라 읽으므로 타입별 필드는 optional로 둔다.
 type EventLine = {
   ts: number
-  type: 'skill' | 'gate' | 'decision' | 'memory-deny' | 'slack-voice-gate' | 'vr-reminder'
+  type: 'skill' | 'gate' | 'decision' | 'memory-deny' | 'slack-voice-gate' | 'vr-reminder' | 'ask-gate'
   session_id: string
   cwd?: string
   // skill, gate
@@ -56,6 +56,7 @@ export async function ingestEvents(): Promise<EventsSummary> {
     memoryDeny: 0,
     slackVoiceGate: 0,
     vrReminder: 0,
+    askGate: 0,
   }
 
   try {
@@ -116,6 +117,10 @@ export async function ingestEvents(): Promise<EventsSummary> {
         // 완료 주장 순간의 검증 규칙 훅(scripts/hooks/vr-reminder.sh). 지금은 건수만. 판정별(would-block/
         // disclosed/blocked) 비율을 보려면 표가 필요하다 — log 모드로 며칠 쌓은 뒤 정한다.
         stats.vrReminder++
+      } else if (e.type === 'ask-gate') {
+        // 되돌릴 수 있는 일을 묻고 멈춘 순간을 잡는 훅(scripts/hooks/ask-gate.sh, 2026-10-12 log 모드). 건수만.
+        // 판정별 판독은 harness-events.jsonl 의 ask/reason 을 직접 읽는다 — 표는 block 전환을 정할 때 만든다.
+        stats.askGate++
       } else {
         // 훅이 새 type 을 남기기 시작했는데 우리가 아직 안 읽고 있다는 뜻이다.
         stats.unknownType++

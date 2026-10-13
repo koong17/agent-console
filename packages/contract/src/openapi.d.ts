@@ -1797,6 +1797,7 @@ export interface paths {
                                         memoryDeny?: number;
                                         slackVoiceGate?: number;
                                         vrReminder?: number;
+                                        askGate?: number;
                                     };
                                 } | null;
                                 unexplained: number | null;
@@ -1841,6 +1842,7 @@ export interface paths {
                                         memoryDeny?: number;
                                         slackVoiceGate?: number;
                                         vrReminder?: number;
+                                        askGate?: number;
                                     };
                                 } | null;
                                 unexplained: number | null;
