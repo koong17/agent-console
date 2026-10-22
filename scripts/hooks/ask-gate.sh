@@ -13,13 +13,18 @@
 # 모드(ASK_GATE_MODE):
 #   log   (기본, 수아 선택 2026-10-12) 판정만 harness-events.jsonl 에 남긴다. 모델 호출을 백그라운드로 돌려
 #         Stop 이 기다리지 않는다 — 기록 모드에서 응답 지연을 만들 이유가 없다.
-#   block 같은 판정을 동기로 돌리고, 되돌릴 수 있는 일을 묻고 있으면 Stop 을 막아 "하고 보고하라"고 돌려보낸다.
+#   block (2026-10-22 부터 켬) 같은 판정을 동기로 돌리고, 되돌릴 수 있는 일을 묻고 있으면 Stop 을 막아 "하고 보고하라"고 돌려보낸다.
 #         stop_hook_active 가 true 면 다시 막지 않는다 — 무한 반복 방지.
 #
 # 보는 범위의 한계: 산문으로 끝난 질문만 본다. AskUserQuestion 으로 낸 질문은 Stop 이 아니라 도구 호출이라
 # 여기로 안 온다(그쪽은 log-decision.sh 가 decisions 로 남긴다).
 # 남기는 줄: type=ask-gate, outcome = would-block | allowed | judge-failed, 그리고 판정 근거와 질문 끝부분.
 # 질문 끝부분을 남기는 이유: VR 훅 판독 때 transcript 를 뒤져 원문을 찾아야 했다. 일주일 뒤 오탐을 읽을 재료다.
+#
+# 2026-10-22 기록 10일 판독(차단 대상 19건): 맞게 잡음 14, 애매 3, 오판 2. 오판 둘은 피드 커서 읽음 처리
+#   (feed-curation 스킬이 확인 없이 커서를 못 옮기게 함)와 새 작업의 범위 확인(전역 규칙이 "불명확하면 먼저 묻는다").
+#   둘을 판정 프롬프트의 예외로 넣고 block 으로 바꿨다(수아 선택). 애매 3건은 공유 MR 스레드 resolve,
+#   디자인 결정이 섞인 충돌 해결, 새 티켓이 딸린 설정 수정 — 다음 판독 때 다시 본다.
 #
 # 이 파일의 실제 위치는 agent-console 레포다. ~/.claude/hooks/ask-gate.sh 는 여기로 오는 심링크.
 
@@ -43,6 +48,7 @@ judge() {
   sys='You judge the last lines of an AI coding agent message that ends with a question to the user.
 Answer with one JSON object only: {"asks_permission": bool, "hard_to_reverse": bool, "kind": string, "reason": string}.
 asks_permission: the agent is stopping to get approval or a choice before doing something it could do itself (continue a plan, run a job, pick among options it listed, commit, edit a file). False for questions that need a fact only the user has, and for rhetorical or reported questions.
+Also false in two cases where the user wants to be asked: (1) moving a read marker or cursor ("여기까지 읽음 처리할까요?") — the user requires confirmation before it moves; (2) checking the scope or meaning of a new task before starting it ("이 범위가 맞나요?", "어떤 걸 확인하는 건가요?") — that is a missing fact, not permission.
 hard_to_reverse: the action deletes data, publishes to other people (push, MR, Slack, Jira, comments, deploy), or undoes someone else'"'"'s action. Commit counts as hard_to_reverse (the user requires approval for commits).
 kind: one of proceed_next_step, pick_option, paid_job, commit, push_or_publish, delete, missing_fact, other.
 reason: one short sentence in Korean.'
