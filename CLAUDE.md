@@ -18,5 +18,5 @@ Before any implementation or design work, read the project brain doc — it owns
 - **Design rules live in `apps/web/DESIGN.md`.** Read it before touching any web UI. Tokens and classes come from `apps/web/app/globals.css`; no hex or ad-hoc styling in components.
 - **Comment generously.** This repo overrides the global "comments only for traps" rule. Suah is learning the mechanisms, so comments should explain what a block does, why this shape over the alternatives, and where it fails. Still no comments that merely restate a self-evident line.
 - **Korean everywhere.** This is Suah's learning repo: code comments, in-repo docs (README, design notes), commit messages, and in-session mechanism explanations are all Korean. Commit type keywords (`feat`, `fix`, `refactor`) and identifiers stay English. The brain doc in `suah-brain` stays English (that repo's own rule).
-- Commit rule: this repo follows the global rule — never commit without Suah's explicit approval.
+- Commit rule: this repo overrides the global rule — commit without asking (Suah, 2026-10-26). Push still needs approval.
 - After a session that changes plan, status, or decisions, update the brain doc's Status section (that repo auto-commits).
