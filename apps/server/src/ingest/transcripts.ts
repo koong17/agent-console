@@ -98,6 +98,14 @@ export const KNOWN_TYPES = new Set([
   'agent-name',
   'artifact-autoreact-ledger',
   'artifact-comment-monitor',
+  // 2026-10 추가. API 요청 기록과 격리 표시라 대화 턴이 아니다. api-request-blob 은
+  // 모델에 실제로 보낸 message 를 담는다. 대화 부분은 user/assistant/attachment 줄에
+  // 이미 있고, 나머지는 하네스가 끼워 넣은 system-reminder·토큰 잔량 같은 것이라
+  // 수집하지 않는다. 나중에 "모델이 실제로 본 맥락"을 재고 싶어지면 여기가 원천이다.
+  'api-request',
+  'api-request-shape',
+  'api-request-blob',
+  'isolation-latch',
 ])
 
 // 트랜스크립트가 아닌데 glob 이 같이 집는 파일. 대화가 아니라 워크플로 실행 기록이라
