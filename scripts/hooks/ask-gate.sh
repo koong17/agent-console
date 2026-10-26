@@ -26,10 +26,21 @@
 #   둘을 판정 프롬프트의 예외로 넣고 block 으로 바꿨다(수아 선택). 애매 3건은 공유 MR 스레드 resolve,
 #   디자인 결정이 섞인 충돌 해결, 새 티켓이 딸린 설정 수정 — 다음 판독 때 다시 본다.
 #
+# 2026-10-26 block 4일 판독(차단 13건): 맞게 막음 9, 오판 1, 사람 없는 세션 2, 막은 뒤 과하게 진행 1.
+#   오판은 또 공유 MR 스레드 resolve(두 번째) — 남이 보는 상태를 바꾸므로 hard_to_reverse 예시에 넣었다.
+#   사람 없는 세션 둘은 suah-brain 교정 재생(claude -p)이었다. 재생은 "그때 에이전트가 무엇을 했나"를 재현하는
+#   실험이라, 여기서 막으면 결과가 오염된다. 그래서 무인 세션은 판정도 기록도 하지 않는다.
+#   과하게 진행 1건은 막힌 뒤 추천안(선택지 3)으로 가면서 수정 하나를 더 얹었고, 수아가 "과하게 한거 아니야?"로 교정했다.
+#   훅이 시킨 건 "추천안으로 진행"까지라 훅 오판은 아니다. 같은 모양이 반복되면 다시 본다.
+#
 # 이 파일의 실제 위치는 agent-console 레포다. ~/.claude/hooks/ask-gate.sh 는 여기로 오는 심링크.
 
 set -u
 payload=$(cat)
+
+# 무인 세션(claude -p 등)은 건너뛴다. 답할 사람이 없고, 교정 재생처럼 원래 행동을 재현하는 실행을 바꿔 버린다.
+# Claude Code 2.1.305 가 훅에 넘기는 값: 대화형 1, -p 0. 변수가 없으면(예전 버전) 지금처럼 판정한다.
+[ "${CLAUDE_CODE_SESSION_ATTENDED:-1}" = 0 ] && exit 0
 mode=${ASK_GATE_MODE:-log}
 events=${ASK_GATE_EVENTS:-$HOME/.claude/harness-events.jsonl} # 테스트에서만 바꾼다
 
@@ -49,7 +60,7 @@ judge() {
 Answer with one JSON object only: {"asks_permission": bool, "hard_to_reverse": bool, "kind": string, "reason": string}.
 asks_permission: the agent is stopping to get approval or a choice before doing something it could do itself (continue a plan, run a job, pick among options it listed, commit, edit a file). False for questions that need a fact only the user has, and for rhetorical or reported questions.
 Also false in two cases where the user wants to be asked: (1) moving a read marker or cursor ("여기까지 읽음 처리할까요?") — the user requires confirmation before it moves; (2) checking the scope or meaning of a new task before starting it ("이 범위가 맞나요?", "어떤 걸 확인하는 건가요?") — that is a missing fact, not permission.
-hard_to_reverse: the action deletes data, publishes to other people (push, MR, Slack, Jira, comments, deploy), or undoes someone else'"'"'s action. Commit counts as hard_to_reverse (the user requires approval for commits).
+hard_to_reverse: the action deletes data, publishes to other people (push, MR, Slack, Jira, comments, resolving a review thread, deploy), or undoes someone else'"'"'s action. Commit counts as hard_to_reverse (the user requires approval for commits).
 kind: one of proceed_next_step, pick_option, paid_job, commit, push_or_publish, delete, missing_fact, other.
 reason: one short sentence in Korean.'
   printf '%s' "$tail_txt" | claude -p --model haiku --no-session-persistence --setting-sources "" \
